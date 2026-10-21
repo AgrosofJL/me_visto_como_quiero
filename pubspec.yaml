@@ -1,0 +1,48 @@
+name: me_visto_como_quiero
+description: "Any.G - Me visto como quiero. Tienda de ropa con pedidos por WhatsApp."
+publish_to: 'none'
+
+version: 1.1.0+2
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:      # textos del sistema en español
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  supabase_flutter: ^2.18.0   # base de datos, login y fotos
+  image_picker: ^1.1.2        # elegir fotos (celu y web)
+  url_launcher: ^6.3.1        # abrir WhatsApp
+  google_fonts: ^6.2.1        # tipografías Cormorant Garamond + Jost
+  shared_preferences: ^2.3.3  # guarda el carrito en el dispositivo
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "logo/logo.png"
+  min_sdk_android: 21 # opcional
+  # Si usás Adaptive Icons para Android moderno:
+  adaptive_icon_background: "#FFFFFF" # o un asset de imagen: "assets/icon/background.png"
+  adaptive_icon_foreground: "logo/logo.png"
+  
+  # Si también compilas para desktop / web:
+  web:
+    generate: true
+    image_path: "logo/logo.png"
+  windows:
+    generate: true
+    image_path: "logo/logo.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
