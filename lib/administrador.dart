@@ -715,8 +715,12 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
       text: widget.prenda == null ? '' : _numATexto(widget.prenda!.precio));
   late final _categoria =
       TextEditingController(text: widget.prenda?.categoria);
-  late final _talles =
-      TextEditingController(text: widget.prenda?.talles.join(', '));
+  /// Talles de la prenda, en orden (vacío = talle único).
+  late final List<String> _listaTalles = [
+    for (final t in widget.prenda?.talles ?? const <String>[])
+      ...separarTalles(t),
+  ];
+  final _nuevoTalle = TextEditingController();
   late bool _disponible = widget.prenda?.disponible ?? true;
   late final _costo = TextEditingController(
       text: widget.costo == null ? '' : _numATexto(widget.costo!));
@@ -728,22 +732,40 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
           (widget.rubros.isEmpty ? null : widget.rubros.first.id));
   final Map<String, TextEditingController> _stockCtrl = {};
 
-  List<String> get _tallesActuales => _talles.text
-      .split(',')
-      .map((t) => t.trim())
-      .where((t) => t.isNotEmpty)
-      .toList();
-
   List<String> get _clavesStock =>
-      _tallesActuales.isEmpty ? const [talleUnico] : _tallesActuales;
+      _listaTalles.isEmpty ? const [talleUnico] : _listaTalles;
+
+  int _cantidad(String talle) =>
+      int.tryParse(_ctrlStock(talle).text.trim()) ?? 0;
+
+  void _sumar(String talle, int delta) {
+    final n = (_cantidad(talle) + delta).clamp(0, 99999);
+    setState(() => _ctrlStock(talle).text = '$n');
+  }
+
+  void _agregarTalles(Iterable<String> talles) {
+    setState(() {
+      for (final t in talles.map((t) => t.trim().toUpperCase())) {
+        if (t.isNotEmpty && t != talleUnico.toUpperCase() &&
+            !_listaTalles.contains(t)) {
+          _listaTalles.add(t);
+        }
+      }
+    });
+  }
+
+  void _agregarTalleEscrito() {
+    _agregarTalles(separarTalles(_nuevoTalle.text));
+    _nuevoTalle.clear();
+  }
 
   TextEditingController _ctrlStock(String talle) => _stockCtrl.putIfAbsent(
       talle,
       () => TextEditingController(
           text: '${widget.prenda?.stock[talle] ?? 0}'));
 
-  int get _stockTotalForm => _clavesStock.fold<int>(
-      0, (s, t) => s + (int.tryParse(_ctrlStock(t).text.trim()) ?? 0));
+  int get _stockTotalForm =>
+      _clavesStock.fold<int>(0, (s, t) => s + _cantidad(t));
 
   XFile? _fotoNueva;
   Uint8List? _fotoBytes;
@@ -754,7 +776,7 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
 
   @override
   void dispose() {
-    for (final c in [_nombre, _descripcion, _precio, _categoria, _talles, _costo]) {
+    for (final c in [_nombre, _descripcion, _precio, _categoria, _nuevoTalle, _costo]) {
       c.dispose();
     }
     for (final c in _stockCtrl.values) {
@@ -809,11 +831,7 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
         descripcion: _descripcion.text.trim(),
         precio: _leerPrecio(_precio.text) ?? 0,
         categoria: _categoria.text.trim(),
-        talles: _talles.text
-            .split(',')
-            .map((t) => t.trim())
-            .where((t) => t.isNotEmpty)
-            .toList(),
+        talles: List.of(_listaTalles),
         imagenUrl: url,
         imagenPath: ruta,
         disponible: _disponible,
@@ -821,9 +839,7 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
         rubroId: _rubroId,
         stock: _controlaStock
             ? {
-                for (final t in _clavesStock)
-                  t: (int.tryParse(_ctrlStock(t).text.trim()) ?? 0)
-                      .clamp(0, 99999),
+                for (final t in _clavesStock) t: _cantidad(t).clamp(0, 99999),
               }
             : const {},
       );
@@ -860,49 +876,176 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
     return 'Ganancia por unidad: ${formatearPrecio(g)} (${(g / precio * 100).round()}%)';
   }
 
+  static const _presetsTalles = {
+    'Letras': ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+    'Números': ['36', '38', '40', '42', '44', '46'],
+    'Jean': ['26', '28', '30', '32', '34', '36', '38', '40'],
+    'Niños': ['2', '4', '6', '8', '10', '12', '14', '16'],
+    'Calzado': ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44'],
+    'Corpiño': ['85', '90', '95', '100', '105'],
+  };
+
   Widget _seccionStock() {
+    final error = Theme.of(context).colorScheme.error;
     return Tarjeta(
-      titulo: 'Stock',
-      accion: Switch(
-        value: _controlaStock,
-        onChanged: (v) => setState(() => _controlaStock = v),
-      ),
-      child: !_controlaStock
-          ? const Text(
-              'Sin control de stock: se puede vender siempre y no se descuenta.',
-              style: TextStyle(color: Marca.gris))
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final t in _clavesStock)
-                      SizedBox(
-                        width: 96,
-                        child: TextField(
-                          controller: _ctrlStock(t),
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            labelText: t == talleUnico ? 'Unidades' : 'Talle $t',
-                            isDense: true,
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ),
-                  ],
+      titulo: 'Talles y cantidades',
+      accion: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Controlar stock',
+            style: TextStyle(color: Marca.gris, fontSize: 12)),
+        Switch(
+          value: _controlaStock,
+          onChanged: (v) => setState(() => _controlaStock = v),
+        ),
+      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Atajos para cargar varios talles de una
+          Text('Cargar talles rápido:',
+              style: const TextStyle(color: Marca.gris, fontSize: 12)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final e in _presetsTalles.entries)
+              ActionChip(
+                label: Text(e.key),
+                tooltip: e.value.join(' · '),
+                onPressed: () => _agregarTalles(e.value),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.looks_one_outlined, size: 16),
+              label: const Text('Talle único'),
+              onPressed: () => setState(_listaTalles.clear),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _nuevoTalle,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  hintText: 'Otro talle (ej: XL o 3XL, 48)',
+                  isDense: true,
                 ),
-                const SizedBox(height: 10),
-                Text('Total: $_stockTotalForm unidades',
-                    style: const TextStyle(color: Marca.gris)),
-                const Text(
-                  'Al registrar una venta se descuenta solo. Si entra mercadería, sumala acá.',
-                  style: TextStyle(color: Marca.gris, fontSize: 12),
+                onSubmitted: (_) => _agregarTalleEscrito(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
+              onPressed: _agregarTalleEscrito,
+              child: const Text('AGREGAR'),
+            ),
+          ]),
+          const SizedBox(height: 16),
+
+          // Tabla: talle | cantidad | quitar
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Marca.borde),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Column(children: [
+              Container(
+                color: Marca.superficieAlta,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(children: [
+                  Expanded(child: Text('TALLE', style: Marca.etiqueta(size: 10))),
+                  if (_controlaStock)
+                    SizedBox(
+                      width: 140,
+                      child: Text('CANTIDAD',
+                          textAlign: TextAlign.center,
+                          style: Marca.etiqueta(size: 10)),
+                    ),
+                  const SizedBox(width: 40),
+                ]),
+              ),
+              for (final t in _clavesStock) ...[
+                const Divider(height: 1),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(t == talleUnico ? 'Único' : t,
+                          style: Marca.titulo(22, peso: FontWeight.w600)),
+                    ),
+                    if (_controlaStock)
+                      SizedBox(
+                        width: 140,
+                        child: Row(children: [
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _sumar(t, -1),
+                            icon: const Icon(Icons.remove, size: 18),
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: _ctrlStock(t),
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: _cantidad(t) == 0
+                                    ? error
+                                    : _cantidad(t) <= Config.stockBajo
+                                        ? const Color(0xFFE0B354)
+                                        : Marca.marfil,
+                              ),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding:
+                                    EdgeInsets.symmetric(vertical: 8),
+                              ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _sumar(t, 1),
+                            icon: const Icon(Icons.add, size: 18),
+                          ),
+                        ]),
+                      ),
+                    SizedBox(
+                      width: 40,
+                      child: t == talleUnico
+                          ? null
+                          : IconButton(
+                              tooltip: 'Quitar talle',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () =>
+                                  setState(() => _listaTalles.remove(t)),
+                              icon: const Icon(Icons.close,
+                                  size: 18, color: Marca.gris),
+                            ),
+                    ),
+                  ]),
                 ),
               ],
+            ]),
+          ),
+          const SizedBox(height: 10),
+          if (_controlaStock) ...[
+            Text('Total: $_stockTotalForm unidades',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            const Text(
+              'Al registrar una venta se descuenta solo del talle vendido. '
+              'Cuando entre mercadería, sumala acá con el +.',
+              style: TextStyle(color: Marca.gris, fontSize: 12),
             ),
+          ] else
+            const Text(
+              'Sin control de stock: se puede vender siempre y no se descuenta.',
+              style: TextStyle(color: Marca.gris, fontSize: 12),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1014,14 +1157,6 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
                   hintText: 'Ej: Remeras, Pantalones, Vestidos'),
               textCapitalization: TextCapitalization.words,
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _talles,
-              decoration: const InputDecoration(
-                  labelText: 'Talles', hintText: 'Separados por coma: S, M, L'),
-              textCapitalization: TextCapitalization.characters,
-              onChanged: (_) => setState(() {}),
-            ),
             const SizedBox(height: 16),
             _seccionStock(),
             const SizedBox(height: 12),
@@ -1056,4 +1191,20 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
       ),
     );
   }
+}
+
+/// Separa lo que se escribe en talles sueltos.
+/// "S, M, L" · "S/M/L" · "XL-XXL" -> [S, M, L] / [XL, XXL].
+/// Los rangos de números como "10-12" (talles de niños) se respetan.
+List<String> separarTalles(String texto) {
+  final out = <String>[];
+  for (final parte in texto.split(RegExp(r'[,;/ ]+'))) {
+    final p = parte.trim().toUpperCase();
+    if (p.isEmpty) continue;
+    final guion = p.split('-');
+    final sonLetras = guion.length > 1 &&
+        guion.every((g) => RegExp(r'^[0-9]*[A-Z]+$').hasMatch(g));
+    out.addAll(sonLetras ? guion : [p]);
+  }
+  return out;
 }
