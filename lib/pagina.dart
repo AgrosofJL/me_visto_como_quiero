@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'carrito.dart';
 import 'catalogo.dart';
+import 'colores.dart';
 import 'config.dart';
 import 'oferta.dart';
 import 'pedido.dart';
@@ -20,19 +21,29 @@ class PaginaPrenda extends StatefulWidget {
 
 class _PaginaPrendaState extends State<PaginaPrenda> {
   String? _talle;
+  String? _color;
   int _cantidad = 1;
   bool _faltaTalle = false;
+  bool _faltaColor = false;
 
   bool _validarTalle() {
-    final falta = widget.prenda.talles.isNotEmpty && _talle == null;
-    setState(() => _faltaTalle = falta);
-    return !falta;
+    final p = widget.prenda;
+    final faltaT = p.talles.isNotEmpty && _talle == null;
+    final faltaC = p.colores.isNotEmpty && _color == null;
+    setState(() {
+      _faltaTalle = faltaT;
+      _faltaColor = faltaC;
+    });
+    return !faltaT && !faltaC;
   }
 
-  /// Máximo que se puede pedir del talle elegido (null = sin límite).
-  int? get _maximo => widget.prenda.talles.isNotEmpty && _talle == null
-      ? null
-      : widget.prenda.stockDe(_talle);
+  /// Máximo que se puede pedir de lo elegido (null = sin límite o falta elegir).
+  int? get _maximo {
+    final p = widget.prenda;
+    if (p.talles.isNotEmpty && _talle == null) return null;
+    if (p.colores.isNotEmpty && _color == null) return null;
+    return p.stockDe(_talle, color: _color);
+  }
 
   Future<void> _consultarReposicion() async {
     final p = widget.prenda;
@@ -44,13 +55,15 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
 
   void _agregar() {
     if (!_validarTalle()) return;
-    carrito.agregar(widget.prenda, talle: _talle, cantidad: _cantidad);
+    carrito.agregar(widget.prenda,
+        talle: _talle, color: _color, cantidad: _cantidad);
     avisoAgregado(context, widget.prenda.nombre);
   }
 
   void _reservar() {
     if (!_validarTalle()) return;
-    reservarAhora(context, widget.prenda, talle: _talle, cantidad: _cantidad);
+    reservarAhora(context, widget.prenda,
+        talle: _talle, color: _color, cantidad: _cantidad);
   }
 
   @override
@@ -136,6 +149,45 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
                 ),
               ]),
             ),
+          if (p.colores.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            Row(children: [
+              Text('COLOR', style: Marca.etiqueta()),
+              if (_color != null) ...[
+                const SizedBox(width: 8),
+                Text(_color!, style: const TextStyle(color: Marca.marfil)),
+              ],
+              if (_faltaColor) ...[
+                const SizedBox(width: 10),
+                Text('Elegí un color',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: 12)),
+              ],
+            ]),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in p.colores)
+                  _BotonColor(
+                    color: c,
+                    seleccionado: _color == c,
+                    sinStock: !p.hayStock(_talle, color: c),
+                    onTap: () => setState(() {
+                      _color = _color == c ? null : c;
+                      _faltaColor = false;
+                      _cantidad = 1;
+                      // Si el talle elegido no tiene ese color, se libera
+                      if (_talle != null && !p.hayStock(_talle, color: _color)) {
+                        _talle = null;
+                      }
+                    }),
+                  ),
+              ],
+            ),
+          ],
           if (p.talles.isNotEmpty) ...[
             const SizedBox(height: 28),
             Row(children: [
@@ -157,9 +209,9 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
                   _BotonTalle(
                     texto: t,
                     seleccionado: _talle == t,
-                    sinStock: !p.hayStock(t),
+                    sinStock: !p.hayStock(t, color: _color),
                     onTap: () => setState(() {
-                      _talle = t;
+                      _talle = _talle == t ? null : t;
                       _faltaTalle = false;
                       _cantidad = 1;
                     }),
@@ -272,6 +324,50 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
       ),
     );
   }
+}
+
+class _BotonColor extends StatelessWidget {
+  const _BotonColor({
+    required this.color,
+    required this.seleccionado,
+    required this.onTap,
+    this.sinStock = false,
+  });
+  final String color;
+  final bool seleccionado;
+  final VoidCallback onTap;
+  final bool sinStock;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: sinStock ? '$color · sin stock' : color,
+        child: InkWell(
+          onTap: sinStock ? null : onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: seleccionado ? Marca.marfil : Colors.transparent,
+              border: Border.all(
+                  color: seleccionado ? Marca.marfil : Marca.borde),
+            ),
+            child: Opacity(
+              opacity: sinStock ? .35 : 1,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                PuntoColor(color, tamano: 18),
+                const SizedBox(width: 8),
+                Text(color,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        decoration:
+                            sinStock ? TextDecoration.lineThrough : null,
+                        color: seleccionado ? Marca.negro : Marca.marfil)),
+              ]),
+            ),
+          ),
+        ),
+      );
 }
 
 class _BotonTalle extends StatelessWidget {

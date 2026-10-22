@@ -14,6 +14,7 @@ class ItemCarrito {
   final String nombre;
   final double precio;
   final String? talle;
+  final String? color;
   final String? imagenUrl;
   int cantidad;
 
@@ -22,21 +23,33 @@ class ItemCarrito {
     required this.nombre,
     required this.precio,
     this.talle,
+    this.color,
     this.imagenUrl,
     this.cantidad = 1,
   });
 
-  factory ItemCarrito.dePrenda(Prenda p, {String? talle, int cantidad = 1}) =>
+  factory ItemCarrito.dePrenda(Prenda p,
+          {String? talle, String? color, int cantidad = 1}) =>
       ItemCarrito(
         prendaId: p.id ?? p.nombre,
         nombre: p.nombre,
         precio: p.precioFinal,
         talle: talle,
+        color: color,
         imagenUrl: p.imagenUrl,
         cantidad: cantidad,
       );
 
-  String get clave => '$prendaId|${talle ?? ''}';
+  String get clave => '$prendaId|${talle ?? ''}|${color ?? ''}';
+
+  /// "Talle M · Rojo", "Rojo", "Talle M" o null.
+  String? get variante {
+    final partes = [
+      if (talle != null) 'Talle $talle',
+      if (color != null) color!,
+    ];
+    return partes.isEmpty ? null : partes.join(' · ');
+  }
   double get subtotal => precio * cantidad;
 
   Map<String, dynamic> toJson() => {
@@ -44,6 +57,7 @@ class ItemCarrito {
         'nombre': nombre,
         'precio': precio,
         'talle': talle,
+        'color': color,
         'imagenUrl': imagenUrl,
         'cantidad': cantidad,
       };
@@ -53,6 +67,7 @@ class ItemCarrito {
         nombre: j['nombre'] as String,
         precio: (j['precio'] as num).toDouble(),
         talle: j['talle'] as String?,
+        color: j['color'] as String?,
         imagenUrl: j['imagenUrl'] as String?,
         cantidad: (j['cantidad'] as num).toInt(),
       );
@@ -98,8 +113,9 @@ class Carrito extends ChangeNotifier {
     }
   }
 
-  void agregar(Prenda p, {String? talle, int cantidad = 1}) {
-    final nuevo = ItemCarrito.dePrenda(p, talle: talle, cantidad: cantidad);
+  void agregar(Prenda p, {String? talle, String? color, int cantidad = 1}) {
+    final nuevo = ItemCarrito.dePrenda(p,
+        talle: talle, color: color, cantidad: cantidad);
     final existente = _items.where((i) => i.clave == nuevo.clave).firstOrNull;
     if (existente != null) {
       existente.cantidad += cantidad;
@@ -302,9 +318,9 @@ class _RenglonCarrito extends StatelessWidget {
                 Text(item.nombre,
                     style: const TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w500)),
-                if (item.talle != null) ...[
+                if (item.variante != null) ...[
                   const SizedBox(height: 2),
-                  Text('Talle ${item.talle}',
+                  Text(item.variante!,
                       style: const TextStyle(color: Marca.gris, fontSize: 13)),
                 ],
                 const SizedBox(height: 6),

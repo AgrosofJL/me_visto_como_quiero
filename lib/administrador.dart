@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'admin_ui.dart';
 import 'carrito.dart' show confirmar;
 import 'catalogo.dart';
+import 'colores.dart';
 import 'config.dart';
 import 'prenda.dart';
 import 'rubro.dart';
@@ -648,7 +649,7 @@ class _FilaPrenda extends StatelessWidget {
                               borderRadius: BorderRadius.circular(3),
                             ),
                             child: Text(
-                              t == talleUnico ? '$n u.' : '$t: $n',
+                              t == talleUnico ? '$n u.' : '${etiquetaVariante(t)}: $n',
                               style: TextStyle(
                                   color: color,
                                   fontSize: 11,
@@ -721,6 +722,10 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
       ...separarTalles(t),
   ];
   final _nuevoTalle = TextEditingController();
+
+  /// Colores de la prenda (vacío = un solo color / no aplica).
+  late final List<String> _listaColores = List.of(widget.prenda?.colores ?? []);
+  final _nuevoColor = TextEditingController();
   late bool _disponible = widget.prenda?.disponible ?? true;
   late final _costo = TextEditingController(
       text: widget.costo == null ? '' : _numATexto(widget.costo!));
@@ -732,8 +737,39 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
           (widget.rubros.isEmpty ? null : widget.rubros.first.id));
   final Map<String, TextEditingController> _stockCtrl = {};
 
-  List<String> get _clavesStock =>
+  List<String> get _tallesOUnico =>
       _listaTalles.isEmpty ? const [talleUnico] : _listaTalles;
+
+  /// Combinaciones talle/color con su clave de stock.
+  List<String> get _clavesStock => [
+        for (final t in _tallesOUnico)
+          if (_listaColores.isEmpty)
+            Prenda.clave(t, null)
+          else
+            for (final c in _listaColores) Prenda.clave(t, c),
+      ];
+
+  void _agregarColores(Iterable<String> colores) {
+    setState(() {
+      for (final c in colores.map(capitalizarColor)) {
+        if (c.isNotEmpty &&
+            !_listaColores.any((x) => x.toLowerCase() == c.toLowerCase())) {
+          _listaColores.add(c);
+        }
+      }
+    });
+  }
+
+  void _agregarColorEscrito() {
+    _agregarColores(_nuevoColor.text.split(RegExp(r'[,;/]+')));
+    _nuevoColor.clear();
+  }
+
+  /// Suma de un talle en todos sus colores.
+  int _totalTalle(String t) => _listaColores.isEmpty
+      ? _cantidad(Prenda.clave(t, null))
+      : _listaColores.fold<int>(
+          0, (s, c) => s + _cantidad(Prenda.clave(t, c)));
 
   int _cantidad(String talle) =>
       int.tryParse(_ctrlStock(talle).text.trim()) ?? 0;
@@ -776,7 +812,7 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
 
   @override
   void dispose() {
-    for (final c in [_nombre, _descripcion, _precio, _categoria, _nuevoTalle, _costo]) {
+    for (final c in [_nombre, _descripcion, _precio, _categoria, _nuevoTalle, _nuevoColor, _costo]) {
       c.dispose();
     }
     for (final c in _stockCtrl.values) {
@@ -832,6 +868,7 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
         precio: _leerPrecio(_precio.text) ?? 0,
         categoria: _categoria.text.trim(),
         talles: List.of(_listaTalles),
+        colores: List.of(_listaColores),
         imagenUrl: url,
         imagenPath: ruta,
         disponible: _disponible,
@@ -885,10 +922,57 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
     'Corpiño': ['85', '90', '95', '100', '105'],
   };
 
-  Widget _seccionStock() {
+  Widget _filaCantidad(String clave, {required Widget etiqueta}) {
     final error = Theme.of(context).colorScheme.error;
+    final n = _cantidad(clave);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(children: [
+        Expanded(child: etiqueta),
+        if (_controlaStock)
+          SizedBox(
+            width: 140,
+            child: Row(children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _sumar(clave, -1),
+                icon: const Icon(Icons.remove, size: 18),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _ctrlStock(clave),
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: n == 0
+                        ? error
+                        : n <= Config.stockBajo
+                            ? const Color(0xFFE0B354)
+                            : Marca.marfil,
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _sumar(clave, 1),
+                icon: const Icon(Icons.add, size: 18),
+              ),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  Widget _seccionStock() {
+    final conColores = _listaColores.isNotEmpty;
     return Tarjeta(
-      titulo: 'Talles y cantidades',
+      titulo: 'Talles, colores y cantidades',
       accion: Row(mainAxisSize: MainAxisSize.min, children: [
         const Text('Controlar stock',
             style: TextStyle(color: Marca.gris, fontSize: 12)),
@@ -900,9 +984,8 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Atajos para cargar varios talles de una
-          Text('Cargar talles rápido:',
-              style: const TextStyle(color: Marca.gris, fontSize: 12)),
+          // ---------------- 1. Talles ----------------
+          Text('1 · TALLES', style: Marca.etiqueta(color: Marca.champagne)),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final e in _presetsTalles.entries)
@@ -917,14 +1000,14 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
               onPressed: () => setState(_listaTalles.clear),
             ),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(children: [
             Expanded(
               child: TextField(
                 controller: _nuevoTalle,
                 textCapitalization: TextCapitalization.characters,
                 decoration: const InputDecoration(
-                  hintText: 'Otro talle (ej: XL o 3XL, 48)',
+                  hintText: 'Otro talle (ej: XL, 3XL, 48)',
                   isDense: true,
                 ),
                 onSubmitted: (_) => _agregarTalleEscrito(),
@@ -939,93 +1022,114 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
               child: const Text('AGREGAR'),
             ),
           ]),
-          const SizedBox(height: 16),
+          if (_listaTalles.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final t in _listaTalles)
+                InputChip(
+                  label: Text(t),
+                  onDeleted: () => setState(() => _listaTalles.remove(t)),
+                ),
+            ]),
+          ],
+          const SizedBox(height: 20),
 
-          // Tabla: talle | cantidad | quitar
+          // ---------------- 2. Colores ----------------
+          Text('2 · COLORES (opcional)',
+              style: Marca.etiqueta(color: Marca.champagne)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final c in coloresRapidos)
+              if (!_listaColores.contains(c))
+                ActionChip(
+                  avatar: PuntoColor(c),
+                  label: Text(c),
+                  onPressed: () => _agregarColores([c]),
+                ),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _nuevoColor,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Otro color (ej: Azul marino, Estampado)',
+                  isDense: true,
+                ),
+                onSubmitted: (_) => _agregarColorEscrito(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14)),
+              onPressed: _agregarColorEscrito,
+              child: const Text('AGREGAR'),
+            ),
+          ]),
+          if (conColores) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final c in _listaColores)
+                InputChip(
+                  avatar: PuntoColor(c),
+                  label: Text(c),
+                  onDeleted: () => setState(() => _listaColores.remove(c)),
+                ),
+            ]),
+          ],
+          const SizedBox(height: 20),
+
+          // ---------------- 3. Cantidades ----------------
+          Text(
+              _controlaStock
+                  ? '3 · CANTIDAD DE CADA UNO'
+                  : '3 · COMBINACIONES',
+              style: Marca.etiqueta(color: Marca.champagne)),
+          const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
               border: Border.all(color: Marca.borde),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Column(children: [
-              Container(
-                color: Marca.superficieAlta,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(children: [
-                  Expanded(child: Text('TALLE', style: Marca.etiqueta(size: 10))),
-                  if (_controlaStock)
-                    SizedBox(
-                      width: 140,
-                      child: Text('CANTIDAD',
-                          textAlign: TextAlign.center,
-                          style: Marca.etiqueta(size: 10)),
-                    ),
-                  const SizedBox(width: 40),
-                ]),
-              ),
-              for (final t in _clavesStock) ...[
-                const Divider(height: 1),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: Row(children: [
-                    Expanded(
-                      child: Text(t == talleUnico ? 'Único' : t,
-                          style: Marca.titulo(22, peso: FontWeight.w600)),
-                    ),
-                    if (_controlaStock)
-                      SizedBox(
-                        width: 140,
-                        child: Row(children: [
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => _sumar(t, -1),
-                            icon: const Icon(Icons.remove, size: 18),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: _ctrlStock(t),
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: _cantidad(t) == 0
-                                    ? error
-                                    : _cantidad(t) <= Config.stockBajo
-                                        ? const Color(0xFFE0B354)
-                                        : Marca.marfil,
-                              ),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding:
-                                    EdgeInsets.symmetric(vertical: 8),
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => _sumar(t, 1),
-                            icon: const Icon(Icons.add, size: 18),
-                          ),
-                        ]),
+              for (final t in _tallesOUnico) ...[
+                if (t != _tallesOUnico.first) const Divider(height: 1),
+                if (!conColores)
+                  _filaCantidad(
+                    Prenda.clave(t, null),
+                    etiqueta: Text(t == talleUnico ? 'Único' : t,
+                        style: Marca.titulo(22, peso: FontWeight.w600)),
+                  )
+                else ...[
+                  Container(
+                    width: double.infinity,
+                    color: Marca.superficieAlta,
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(
+                            t == talleUnico ? 'Talle único' : 'Talle $t',
+                            style: Marca.titulo(20, peso: FontWeight.w600)),
                       ),
-                    SizedBox(
-                      width: 40,
-                      child: t == talleUnico
-                          ? null
-                          : IconButton(
-                              tooltip: 'Quitar talle',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () =>
-                                  setState(() => _listaTalles.remove(t)),
-                              icon: const Icon(Icons.close,
-                                  size: 18, color: Marca.gris),
-                            ),
+                      if (_controlaStock)
+                        Text('${_totalTalle(t)} u.',
+                            style: const TextStyle(color: Marca.gris)),
+                    ]),
+                  ),
+                  for (final c in _listaColores)
+                    _filaCantidad(
+                      Prenda.clave(t, c),
+                      etiqueta: Row(children: [
+                        const SizedBox(width: 8),
+                        PuntoColor(c, tamano: 16),
+                        const SizedBox(width: 10),
+                        Flexible(child: Text(c)),
+                      ]),
                     ),
-                  ]),
-                ),
+                ],
               ],
             ]),
           ),
@@ -1035,7 +1139,7 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
                 style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
             const Text(
-              'Al registrar una venta se descuenta solo del talle vendido. '
+              'Al registrar una venta se descuenta solo del talle y color vendido. '
               'Cuando entre mercadería, sumala acá con el +.',
               style: TextStyle(color: Marca.gris, fontSize: 12),
             ),

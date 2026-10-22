@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'administrador.dart';
 import 'carrito.dart';
+import 'colores.dart';
 import 'config.dart';
 import 'oferta.dart';
 import 'pagina.dart';
@@ -635,7 +636,7 @@ class _TarjetaPrendaState extends State<TarjetaPrenda> {
   void _agregarRapido() {
     final p = widget.prenda;
     if (p.agotada) return;
-    if (p.talles.isNotEmpty || !p.hayStock(null)) {
+    if (p.talles.isNotEmpty || p.colores.isNotEmpty || !p.hayStock(null)) {
       _abrir(); // tiene talles: que elija en la página de la prenda
       return;
     }
@@ -780,6 +781,21 @@ class _TarjetaPrendaState extends State<TarjetaPrenda> {
                                   decoration: TextDecoration.lineThrough)),
                       ],
                     ),
+                    if (p.colores.length > 1) ...[
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        for (final c in p.colores.take(6))
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Tooltip(
+                                message: c, child: PuntoColor(c, tamano: 12)),
+                          ),
+                        if (p.colores.length > 6)
+                          Text('+${p.colores.length - 6}',
+                              style: const TextStyle(
+                                  color: Marca.gris, fontSize: 11)),
+                      ]),
+                    ],
                   ],
                 ),
               ),

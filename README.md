@@ -20,7 +20,8 @@ Sin Mercado Pago: el pago se coordina por WhatsApp (efectivo o transferencia).
 - **Ventas:** registrar ventas (varias prendas por ticket, talle, cantidad y
   **precio real al que se vendió**), forma de pago y canal. Descuenta el stock solo.
   Listado por día y opción de **anular** (devuelve el stock).
-- **Stock y prendas:** stock por talle, costo de compra (privado), filtros de
+- **Stock y prendas:** stock por **talle y color** (tabla con + / −, talles
+  rápidos y colores rápidos), costo de compra (privado), filtros de
   sin stock / stock bajo / ocultas y botón rápido para vender.
 - **Ofertas:** agrupá prendas con un % OFF o precio especial por prenda, con
   fecha de inicio/fin opcional. Se pueden pausar. En la tienda aparece un banner,
@@ -56,11 +57,13 @@ Los cambios se ven al instante para todos. No hace falta actualizar la app ni to
 | `lib/ofertas_admin.dart` | Pestaña y formulario de ofertas |
 | `lib/rubro.dart` / `lib/rubros_admin.dart` | Rubros y su pantalla de administración |
 | `lib/servicio.dart` | Todas las llamadas a Supabase |
-| `lib/prenda.dart` | Modelo de datos |
+| `lib/prenda.dart` | Modelo de datos (variantes talle/color) |
+| `lib/colores.dart` | Colores rápidos y muestras de color |
 | `supabase/esquema.sql` | Tablas, seguridad y bucket de fotos |
 | `supabase/02_stock_ventas.sql` | Stock, costos, ventas y funciones para vender/anular |
 | `supabase/03_ofertas_publico.sql` | Ofertas y público de cada prenda |
 | `supabase/04_rubros.sql` | Rubros (tipos de productos) |
+| `supabase/05_colores.sql` | Colores por prenda (stock por talle y color) |
 | `.github/workflows/web.yml` | Publica la web en GitHub Pages automáticamente |
 
 ## Puesta en marcha (una sola vez)
@@ -68,7 +71,7 @@ Los cambios se ven al instante para todos. No hace falta actualizar la app ni to
 1. **Base de datos:** en Supabase > *SQL Editor* pegá `supabase/esquema.sql`,
    cambiá los dos emails del final por los reales y tocá **Run**.
    Después, en consultas nuevas, corré en este orden: `supabase/02_stock_ventas.sql`,
-   `supabase/03_ofertas_publico.sql` y `supabase/04_rubros.sql`.
+   `supabase/03_ofertas_publico.sql`, `supabase/04_rubros.sql` y `supabase/05_colores.sql`.
 2. **Usuarios:** en Supabase > *Authentication > Users > Add user > Create new user*,
    creá un usuario para cada administrador (mismo email que pusiste en el SQL,
    tildando *Auto Confirm User*).

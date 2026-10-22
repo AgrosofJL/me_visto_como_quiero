@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'admin_ui.dart';
 import 'carrito.dart' show SelectorCantidad, confirmar;
 import 'catalogo.dart' show FotoPrenda;
+import 'colores.dart';
 import 'config.dart';
 import 'prenda.dart';
 import 'servicio.dart';
@@ -162,7 +163,7 @@ class _FilaVenta extends StatelessWidget {
     final v = venta;
     final resumen = v.items
         .map((i) => '${i.cantidad}× ${i.nombre}'
-            '${i.talle != talleUnico ? ' (${i.talle})' : ''}')
+            '${i.talle != talleUnico ? ' (${etiquetaVariante(i.talle)})' : ''}')
         .join(', ');
     final tachado = v.anulada
         ? const TextStyle(
@@ -258,7 +259,7 @@ class _DetalleVentaState extends State<_DetalleVenta> {
                   Expanded(
                     child: Text(
                         '${i.cantidad} × ${i.nombre}'
-                        '${i.talle != talleUnico ? ' · talle ${i.talle}' : ''}'
+                        '${i.talle != talleUnico ? ' · ${etiquetaVariante(i.talle)}' : ''}'
                         '\n${formatearPrecio(i.precioUnitario)} c/u'),
                   ),
                   Text(formatearPrecio(i.subtotal),
@@ -446,7 +447,7 @@ class _NuevaVentaPageState extends State<NuevaVentaPage> {
                           contentPadding: EdgeInsets.zero,
                           title: Text(_items[k].nombre),
                           subtitle: Text(
-                            '${_items[k].talle != talleUnico ? 'Talle ${_items[k].talle} · ' : ''}'
+                            '${_items[k].talle != talleUnico ? '${etiquetaVariante(_items[k].talle)} · ' : ''}'
                             '${_items[k].cantidad} × ${formatearPrecio(_items[k].precioUnitario)}',
                             style: const TextStyle(color: Marca.gris),
                           ),
@@ -630,10 +631,10 @@ class _DetalleItemState extends State<_DetalleItem> {
     super.dispose();
   }
 
-  /// Unidades que todavía se pueden vender de ese talle (null = sin límite).
-  int? _disponible(String talle) {
-    final s = widget.prenda.stockDe(talle);
-    return s == null ? null : s - widget.yaEnTicket(talle);
+  /// Unidades que todavía se pueden vender de esa variante (null = sin límite).
+  int? _disponible(String clave) {
+    final s = widget.prenda.stockClave(clave);
+    return s == null ? null : s - widget.yaEnTicket(clave);
   }
 
   double? _leerPrecio(String t) {
@@ -668,9 +669,10 @@ class _DetalleItemState extends State<_DetalleItem> {
                   ? 'Lista: ${p.precioTexto} · En oferta "${p.ofertaNombre}": ${p.precioFinalTexto}'
                   : 'Precio de lista: ${p.precioTexto}',
               style: const TextStyle(color: Marca.gris)),
-          if (p.talles.isNotEmpty) ...[
+          if (p.clavesStock.length > 1) ...[
             const SizedBox(height: 18),
-            Text('TALLE', style: Marca.etiqueta()),
+            Text(p.colores.isEmpty ? 'TALLE' : 'TALLE Y COLOR',
+                style: Marca.etiqueta()),
             const SizedBox(height: 8),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final t in p.clavesStock)
@@ -678,9 +680,13 @@ class _DetalleItemState extends State<_DetalleItem> {
                   final d = _disponible(t);
                   final sinStock = d != null && d <= 0;
                   final sel = _talle == t;
+                  final (_, color) = partesVariante(t);
                   return ChoiceChip(
+                    avatar: color == null ? null : PuntoColor(color),
                     label: Text(
-                      d == null ? t : '$t  ($d)',
+                      d == null
+                          ? etiquetaVariante(t)
+                          : '${etiquetaVariante(t)}  ($d)',
                       style: TextStyle(
                         color: sel ? Marca.negro : Marca.marfil,
                         decoration:

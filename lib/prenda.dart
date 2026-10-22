@@ -6,6 +6,9 @@ class Prenda {
   final double precio;
   final String categoria;
   final List<String> talles;
+
+  /// Colores disponibles (vacío = un solo color / no aplica).
+  final List<String> colores;
   final String? imagenUrl;
   final String? imagenPath;
   final bool disponible;
@@ -32,6 +35,7 @@ class Prenda {
     this.precio = 0,
     this.categoria = '',
     this.talles = const [],
+    this.colores = const [],
     this.imagenUrl,
     this.imagenPath,
     this.disponible = true,
@@ -52,6 +56,7 @@ class Prenda {
         precio: this.precio,
         categoria: categoria,
         talles: talles,
+        colores: colores,
         imagenUrl: imagenUrl,
         imagenPath: imagenPath,
         disponible: disponible,
@@ -72,6 +77,9 @@ class Prenda {
         categoria: (m['categoria'] ?? '') as String,
         talles: (m['talles'] as List?)?.map((e) => e.toString()).toList() ??
             const [],
+        colores:
+            (m['colores'] as List?)?.map((e) => e.toString()).toList() ??
+                const [],
         imagenUrl: m['imagen_url'] as String?,
         imagenPath: m['imagen_path'] as String?,
         disponible: (m['disponible'] ?? true) as bool,
@@ -91,6 +99,7 @@ class Prenda {
         'precio': precio,
         'categoria': categoria,
         'talles': talles,
+        'colores': colores,
         'imagen_url': imagenUrl,
         'imagen_path': imagenPath,
         'disponible': disponible,
@@ -113,22 +122,49 @@ class Prenda {
   int get descuentoPct =>
       enOferta && precio > 0 ? ((1 - precioOferta! / precio) * 100).round() : 0;
 
-  /// Cargada en los últimos 10 días: se muestra la etiqueta "NUEVO".
-  /// Talles para el stock: si no tiene talles se usa "Único".
-  List<String> get clavesStock => talles.isEmpty ? const [talleUnico] : talles;
+  /// Clave de stock de cada combinación talle/color (ej. "XL|Gris").
+  static String clave(String? talle, String? color) {
+    final t = (talle == null || talle.isEmpty) ? talleUnico : talle;
+    return (color == null || color.isEmpty) ? t : '$t|$color';
+  }
+
+  List<String> get _tallesOUnico => talles.isEmpty ? const [talleUnico] : talles;
+
+  /// Todas las combinaciones talle/color que llevan stock.
+  List<String> get clavesStock => [
+        for (final t in _tallesOUnico)
+          if (colores.isEmpty)
+            clave(t, null)
+          else
+            for (final c in colores) clave(t, c),
+      ];
 
   bool get controlaStock => stock.isNotEmpty;
 
-  /// Unidades disponibles de un talle (null = sin control de stock).
-  int? stockDe(String? talle) =>
-      controlaStock ? (stock[talle ?? talleUnico] ?? 0) : null;
+  /// Unidades disponibles (null = sin control de stock).
+  /// Si no se indica talle o color, suma todas las opciones de ese dato.
+  int? stockDe(String? talle, {String? color}) {
+    if (!controlaStock) return null;
+    var total = 0;
+    for (final k in clavesStock) {
+      final (t, c) = partesVariante(k);
+      final okT = talle == null || talles.isEmpty || t == talle;
+      final okC = color == null || colores.isEmpty || c == color;
+      if (okT && okC) total += stock[k] ?? 0;
+    }
+    return total;
+  }
 
-  int get stockTotal => stock.values.fold<int>(0, (a, b) => a + b);
+  /// Stock de una clave exacta (null = sin control de stock).
+  int? stockClave(String k) => controlaStock ? (stock[k] ?? 0) : null;
+
+  int get stockTotal =>
+      clavesStock.fold<int>(0, (s, k) => s + (stock[k] ?? 0));
 
   bool get agotada => controlaStock && stockTotal <= 0;
 
-  bool hayStock(String? talle, [int cantidad = 1]) {
-    final s = stockDe(talle);
+  bool hayStock(String? talle, {String? color, int cantidad = 1}) {
+    final s = stockDe(talle, color: color);
     return s == null || s >= cantidad;
   }
 
@@ -137,6 +173,19 @@ class Prenda {
 }
 
 const talleUnico = 'Único';
+
+/// "XL|Gris" -> ("XL", "Gris") · "XL" -> ("XL", null)
+(String, String?) partesVariante(String clave) {
+  final i = clave.indexOf('|');
+  return i < 0 ? (clave, null) : (clave.substring(0, i), clave.substring(i + 1));
+}
+
+/// Texto para mostrar: "XL · Gris", "Gris", "XL" o "Único".
+String etiquetaVariante(String clave) {
+  final (t, c) = partesVariante(clave);
+  if (c == null) return t;
+  return t == talleUnico ? c : '$t · $c';
+}
 
 String formatearPrecio(double valor) {
   final entero = valor.truncate();

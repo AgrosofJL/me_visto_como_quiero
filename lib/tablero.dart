@@ -411,7 +411,9 @@ class TableroTabState extends State<TableroTab> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-                '${p.nombre}${talle != talleUnico ? ' · talle $talle' : ''}',
+                talle == talleUnico
+                    ? p.nombre
+                    : '${p.nombre} · ${etiquetaVariante(talle)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
           ),

@@ -115,7 +115,7 @@ class _PedidoPageState extends State<PedidoPage> {
         : '¡Hola ${Config.nombreTienda}! 👋 Quiero hacer este *pedido*:');
     b.writeln();
     for (final i in widget.items) {
-      final talle = i.talle != null ? ' (talle ${i.talle})' : '';
+      final talle = i.variante != null ? ' (${i.variante})' : '';
       b.writeln('• ${i.cantidad} x ${i.nombre}$talle — ${formatearPrecio(i.subtotal)}');
     }
     b.writeln();
@@ -321,7 +321,7 @@ class _PedidoPageState extends State<PedidoPage> {
                     Expanded(
                       child: Text(
                         '${i.cantidad} × ${i.nombre}'
-                        '${i.talle != null ? ' · talle ${i.talle}' : ''}',
+                        '${i.variante != null ? ' · ${i.variante}' : ''}',
                       ),
                     ),
                     Text(formatearPrecio(i.subtotal)),
@@ -407,10 +407,12 @@ class _PedidoPageState extends State<PedidoPage> {
 
 /// Atajo para reservar una sola prenda sin pasar por el carrito.
 void reservarAhora(BuildContext context, Prenda p,
-    {String? talle, int cantidad = 1}) {
+    {String? talle, String? color, int cantidad = 1}) {
   abrirPedido(
     context,
-    items: [ItemCarrito.dePrenda(p, talle: talle, cantidad: cantidad)],
+    items: [
+      ItemCarrito.dePrenda(p, talle: talle, color: color, cantidad: cantidad)
+    ],
     esReserva: true,
   );
 }

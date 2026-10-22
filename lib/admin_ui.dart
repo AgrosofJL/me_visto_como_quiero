@@ -176,7 +176,7 @@ class SinDatos extends StatelessWidget {
 
 /// Mensaje de error amigable a partir de una excepción de Supabase.
 String mensajeError(Object e) {
-  if (e is PostgrestException) return e.message;
+  if (e is PostgrestException) return e.message.replaceAll('|', ' · ');
   if (e is AuthException) return e.message;
   final t = e.toString();
   final m = RegExp(r'message: ([^,]+)').firstMatch(t);
