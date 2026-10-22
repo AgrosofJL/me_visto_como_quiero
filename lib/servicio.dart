@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config.dart';
 import 'oferta.dart';
 import 'prenda.dart';
+import 'rubro.dart';
 import 'venta.dart';
 
 /// Todo lo que habla con Supabase está acá.
@@ -29,6 +30,40 @@ class Servicio {
       return aplicarOfertas(prendas, await listarOfertas());
     } catch (_) {
       return prendas; // Si todavía no existe la tabla de ofertas
+    }
+  }
+
+  // ---------- Rubros ----------
+
+  static Future<List<Rubro>> listarRubros() async {
+    final filas = await _db
+        .from('rubros')
+        .select()
+        .order('orden')
+        .order('nombre');
+    return filas.map(Rubro.fromMap).toList();
+  }
+
+  static Future<Rubro> guardarRubro(Rubro r) async {
+    final fila = r.id == null
+        ? await _db.from('rubros').insert(r.toMap()).select().single()
+        : await _db
+            .from('rubros')
+            .update(r.toMap())
+            .eq('id', r.id!)
+            .select()
+            .single();
+    return Rubro.fromMap(fila);
+  }
+
+  static Future<void> borrarRubro(String id) async {
+    await _db.from('rubros').delete().eq('id', id);
+  }
+
+  /// Guarda el orden (posición en la lista) de todos los rubros.
+  static Future<void> ordenarRubros(List<Rubro> rubros) async {
+    for (var i = 0; i < rubros.length; i++) {
+      await _db.from('rubros').update({'orden': i + 1}).eq('id', rubros[i].id!);
     }
   }
 

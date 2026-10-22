@@ -9,6 +9,8 @@ import 'carrito.dart' show confirmar;
 import 'catalogo.dart';
 import 'config.dart';
 import 'prenda.dart';
+import 'rubro.dart';
+import 'rubros_admin.dart';
 import 'servicio.dart';
 import 'ofertas_admin.dart';
 import 'tablero.dart';
@@ -336,6 +338,8 @@ class _PrendasTab extends StatefulWidget {
 class _PrendasTabState extends State<_PrendasTab> {
   List<Prenda> _prendas = [];
   Map<String, double> _costos = {};
+  List<Rubro> _rubros = [];
+  String? _rubroFiltro; // null = todos
   bool _cargando = true;
   String _q = '';
   String _filtro = 'Todas';
@@ -358,6 +362,11 @@ class _PrendasTabState extends State<_PrendasTab> {
     } catch (_) {
       _costos = {}; // Todavía no se corrió 02_stock_ventas.sql
     }
+    try {
+      _rubros = await Servicio.listarRubros();
+    } catch (_) {
+      _rubros = []; // Todavía no se corrió 04_rubros.sql
+    }
     if (mounted) setState(() => _cargando = false);
   }
 
@@ -368,6 +377,8 @@ class _PrendasTabState extends State<_PrendasTab> {
         builder: (_) => FormularioPrenda(
           prenda: p,
           costo: p?.id == null ? null : _costos[p!.id],
+          rubros: _rubros,
+          rubroInicial: _rubroFiltro,
         ),
       ),
     );
@@ -399,6 +410,14 @@ class _PrendasTabState extends State<_PrendasTab> {
     }
   }
 
+  Future<void> _abrirRubros() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RubrosPage()),
+    );
+    recargar();
+  }
+
   bool _tieneBajo(Prenda p) =>
       p.controlaStock &&
       p.clavesStock.any((t) {
@@ -420,7 +439,8 @@ class _PrendasTabState extends State<_PrendasTab> {
         'Ocultas' => !p.disponible,
         _ => true,
       };
-      return okQ && okF;
+      final okR = _rubroFiltro == null || p.rubroId == _rubroFiltro;
+      return okQ && okF && okR;
     }).toList();
 
     final totalUnidades = _prendas
@@ -462,9 +482,48 @@ class _PrendasTabState extends State<_PrendasTab> {
               ],
             ),
           ),
+          if (_rubros.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final r in [null, ..._rubros])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(
+                            r == null
+                                ? 'Todos los rubros'
+                                : '${r.nombre} (${_prendas.where((p) => p.rubroId == r.id).length})',
+                            style: TextStyle(
+                                color: _rubroFiltro == r?.id
+                                    ? Marca.negro
+                                    : Marca.marfil)),
+                        selected: _rubroFiltro == r?.id,
+                        onSelected: (_) =>
+                            setState(() => _rubroFiltro = r?.id),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
-          Text('${_prendas.length} prendas · $totalUnidades unidades en stock',
-              style: const TextStyle(color: Marca.gris, fontSize: 12)),
+          Row(children: [
+            Expanded(
+              child: Text(
+                  '${_prendas.length} prendas · $totalUnidades unidades en stock',
+                  style: const TextStyle(color: Marca.gris, fontSize: 12)),
+            ),
+            TextButton.icon(
+              onPressed: _abrirRubros,
+              icon: const Icon(Icons.category_outlined, size: 18),
+              label: const Text('Rubros'),
+            ),
+          ]),
+          const SizedBox(height: 4),
           const SizedBox(height: 10),
           if (_cargando)
             const Padding(
@@ -482,6 +541,10 @@ class _PrendasTabState extends State<_PrendasTab> {
                   _FilaPrenda(
                     prenda: p,
                     costo: _costos[p.id],
+                    rubro: _rubros
+                        .where((r) => r.id == p.rubroId)
+                        .map((r) => r.nombre)
+                        .firstOrNull,
                     onTap: () => editar(p),
                     onVender: () => _vender(p),
                     onBorrar: () => _borrar(p),
@@ -500,12 +563,14 @@ class _FilaPrenda extends StatelessWidget {
   const _FilaPrenda({
     required this.prenda,
     required this.costo,
+    this.rubro,
     required this.onTap,
     required this.onVender,
     required this.onBorrar,
   });
   final Prenda prenda;
   final double? costo;
+  final String? rubro;
   final VoidCallback onTap;
   final VoidCallback onVender;
   final VoidCallback onBorrar;
@@ -555,6 +620,7 @@ class _FilaPrenda extends StatelessWidget {
                       if (costo != null && costo! > 0)
                         'costo ${formatearPrecio(costo!)}',
                       if (p.categoria.isNotEmpty) p.categoria,
+                      if (rubro != null) rubro!,
                       if (p.publico.isNotEmpty) p.publico,
                     ].join(' · '),
                     style: const TextStyle(color: Marca.gris, fontSize: 12),
@@ -618,7 +684,19 @@ class _FilaPrenda extends StatelessWidget {
 // ------------------------------------------------------------------
 
 class FormularioPrenda extends StatefulWidget {
-  const FormularioPrenda({super.key, this.prenda, this.costo});
+  const FormularioPrenda({
+    super.key,
+    this.prenda,
+    this.costo,
+    this.rubros = const [],
+    this.rubroInicial,
+  });
+
+  /// Rubros disponibles para elegir.
+  final List<Rubro> rubros;
+
+  /// Rubro preseleccionado para prendas nuevas.
+  final String? rubroInicial;
   final Prenda? prenda;
 
   /// Costo de compra actual (solo lo ve el admin).
@@ -644,6 +722,10 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
       text: widget.costo == null ? '' : _numATexto(widget.costo!));
   late bool _controlaStock = widget.prenda?.controlaStock ?? true;
   late String _publico = widget.prenda?.publico ?? '';
+  late String? _rubroId = widget.prenda != null
+      ? widget.prenda!.rubroId
+      : (widget.rubroInicial ??
+          (widget.rubros.isEmpty ? null : widget.rubros.first.id));
   final Map<String, TextEditingController> _stockCtrl = {};
 
   List<String> get _tallesActuales => _talles.text
@@ -736,6 +818,7 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
         imagenPath: ruta,
         disponible: _disponible,
         publico: _publico,
+        rubroId: _rubroId,
         stock: _controlaStock
             ? {
                 for (final t in _clavesStock)
@@ -894,6 +977,23 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
+            if (widget.rubros.isNotEmpty) ...[
+              Text('RUBRO', style: Marca.etiqueta()),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final r in widget.rubros)
+                  ChoiceChip(
+                    label: Text(r.nombre,
+                        style: TextStyle(
+                            color: _rubroId == r.id
+                                ? Marca.negro
+                                : Marca.marfil)),
+                    selected: _rubroId == r.id,
+                    onSelected: (_) => setState(() => _rubroId = r.id),
+                  ),
+              ]),
+              const SizedBox(height: 16),
+            ],
             Text('¿PARA QUIÉN ES?', style: Marca.etiqueta()),
             const SizedBox(height: 8),
             Wrap(spacing: 8, runSpacing: 8, children: [

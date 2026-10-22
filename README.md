@@ -25,6 +25,9 @@ Sin Mercado Pago: el pago se coordina por WhatsApp (efectivo o transferencia).
 - **Ofertas:** agrupá prendas con un % OFF o precio especial por prenda, con
   fecha de inicio/fin opcional. Se pueden pausar. En la tienda aparece un banner,
   el filtro "Ofertas", el precio tachado y la cuenta regresiva.
+- **Rubros:** tipos de productos (Ropa, Bijouterie, Ropa interior, Accesorios…)
+  que se crean, renombran y ordenan desde Stock › Rubros. En la tienda aparecen
+  como secciones "¿Qué estás buscando?" y en el tablero hay ventas por rubro.
 - **Público:** cada prenda se marca Mujer / Hombre / Niños / Unisex y la tienda
   muestra pestañas para filtrar (Unisex aparece en Mujer y Hombre).
 - En la tienda, lo que no tiene stock aparece **AGOTADO** y los talles sin stock
@@ -51,19 +54,21 @@ Los cambios se ven al instante para todos. No hace falta actualizar la app ni to
 | `lib/admin_ui.dart` | Componentes visuales del panel |
 | `lib/oferta.dart` | Modelo de ofertas y cálculo del precio final |
 | `lib/ofertas_admin.dart` | Pestaña y formulario de ofertas |
+| `lib/rubro.dart` / `lib/rubros_admin.dart` | Rubros y su pantalla de administración |
 | `lib/servicio.dart` | Todas las llamadas a Supabase |
 | `lib/prenda.dart` | Modelo de datos |
 | `supabase/esquema.sql` | Tablas, seguridad y bucket de fotos |
 | `supabase/02_stock_ventas.sql` | Stock, costos, ventas y funciones para vender/anular |
 | `supabase/03_ofertas_publico.sql` | Ofertas y público de cada prenda |
+| `supabase/04_rubros.sql` | Rubros (tipos de productos) |
 | `.github/workflows/web.yml` | Publica la web en GitHub Pages automáticamente |
 
 ## Puesta en marcha (una sola vez)
 
 1. **Base de datos:** en Supabase > *SQL Editor* pegá `supabase/esquema.sql`,
    cambiá los dos emails del final por los reales y tocá **Run**.
-   Después, en consultas nuevas, corré `supabase/02_stock_ventas.sql` y
-   `supabase/03_ofertas_publico.sql` (en ese orden).
+   Después, en consultas nuevas, corré en este orden: `supabase/02_stock_ventas.sql`,
+   `supabase/03_ofertas_publico.sql` y `supabase/04_rubros.sql`.
 2. **Usuarios:** en Supabase > *Authentication > Users > Add user > Create new user*,
    creá un usuario para cada administrador (mismo email que pusiste en el SQL,
    tildando *Auto Confirm User*).

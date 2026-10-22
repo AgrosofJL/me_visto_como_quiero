@@ -9,6 +9,7 @@ import 'config.dart';
 import 'oferta.dart';
 import 'pagina.dart';
 import 'prenda.dart';
+import 'rubro.dart';
 import 'servicio.dart';
 import 'tema.dart';
 
@@ -30,6 +31,8 @@ class _CatalogoPageState extends State<CatalogoPage> {
   String _orden = 'Novedades';
   String _publico = 'Todo';
   bool _soloOfertas = false;
+  List<Rubro> _rubros = [];
+  String? _rubroId; // null = todos
 
   @override
   void initState() {
@@ -44,6 +47,11 @@ class _CatalogoPageState extends State<CatalogoPage> {
     });
     try {
       final lista = await Servicio.catalogo();
+      try {
+        _rubros = await Servicio.listarRubros();
+      } catch (_) {
+        _rubros = []; // Todavía no se corrió 04_rubros.sql
+      }
       if (!mounted) return;
       setState(() => _prendas = lista.where((p) => p.disponible).toList());
     } catch (_) {
@@ -54,8 +62,17 @@ class _CatalogoPageState extends State<CatalogoPage> {
     }
   }
 
+  /// Prendas del rubro y público elegidos (base para categorías y grilla).
+  Iterable<Prenda> get _enSeccion => _prendas.where((p) =>
+      (_rubroId == null || p.rubroId == _rubroId) &&
+      _coincidePublico(p, _publico));
+
+  /// Rubros que tienen al menos una prenda visible, en el orden configurado.
+  List<Rubro> get _rubrosConPrendas =>
+      _rubros.where((r) => _prendas.any((p) => p.rubroId == r.id)).toList();
+
   List<String> get _categorias {
-    final set = _prendas
+    final set = _enSeccion
         .map((p) => p.categoria.trim())
         .where((c) => c.isNotEmpty)
         .toSet()
@@ -68,13 +85,14 @@ class _CatalogoPageState extends State<CatalogoPage> {
     final q = _busqueda.toLowerCase().trim();
     final lista = _prendas.where((p) {
       final okCat = _categoria == 'Todo' || p.categoria.trim() == _categoria;
+      final okRubro = _rubroId == null || p.rubroId == _rubroId;
       final okPub = _coincidePublico(p, _publico);
       final okOferta = !_soloOfertas || p.enOferta;
       final okBusq = q.isEmpty ||
           p.nombre.toLowerCase().contains(q) ||
           p.descripcion.toLowerCase().contains(q) ||
           p.categoria.toLowerCase().contains(q);
-      return okCat && okBusq && okPub && okOferta;
+      return okCat && okBusq && okPub && okOferta && okRubro;
     }).toList();
     switch (_orden) {
       case 'Menor precio':
@@ -95,7 +113,10 @@ class _CatalogoPageState extends State<CatalogoPage> {
   List<String> get _publicosDisponibles => [
         'Todo',
         for (final pub in Config.publicos)
-          if (_prendas.any((p) => p.publico == pub)) pub,
+          if (_prendas.any((p) =>
+              p.publico == pub &&
+              (_rubroId == null || p.rubroId == _rubroId)))
+            pub,
       ];
 
   void _verOfertas() {
@@ -321,6 +342,59 @@ class _CatalogoPageState extends State<CatalogoPage> {
     );
   }
 
+  Widget _selectorRubros() {
+    final rubros = _rubrosConPrendas;
+    if (rubros.length <= 1) return const SizedBox.shrink();
+    Widget boton(String? id, String nombre) {
+      final sel = _rubroId == id;
+      return Padding(
+        padding: const EdgeInsets.only(right: 10),
+        child: InkWell(
+          onTap: () => setState(() {
+            _rubroId = id;
+            _categoria = 'Todo';
+            _publico = 'Todo';
+          }),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: sel ? Marca.marfil : Colors.black.withValues(alpha: .35),
+              border: Border.all(color: sel ? Marca.marfil : Marca.borde),
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: Text(nombre,
+                style: Marca.titulo(22,
+                    peso: FontWeight.w600,
+                    color: sel ? Marca.negro : Marca.marfil)),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('¿QUÉ ESTÁS BUSCANDO?',
+              style: Marca.etiqueta(color: Marca.champagne)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 52,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                boton(null, 'Todo'),
+                for (final r in rubros) boton(r.id, r.nombre),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _pestanasPublico() {
     final pubs = _publicosDisponibles;
     if (pubs.length <= 1) return const SizedBox.shrink();
@@ -369,6 +443,7 @@ class _CatalogoPageState extends State<CatalogoPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _bannerOfertas(),
+        _selectorRubros(),
         _pestanasPublico(),
         const SizedBox(height: 24),
         Row(
@@ -386,7 +461,16 @@ class _CatalogoPageState extends State<CatalogoPage> {
                               : _publico.toUpperCase(),
                       style: Marca.etiqueta(color: Marca.champagne)),
                   const SizedBox(height: 4),
-                  Text(_soloOfertas ? 'Ofertas' : 'Colección',
+                  Text(
+                      _soloOfertas
+                          ? 'Ofertas'
+                          : _rubroId != null
+                              ? _rubros
+                                  .firstWhere((r) => r.id == _rubroId,
+                                      orElse: () =>
+                                          const Rubro(nombre: 'Colección'))
+                                  .nombre
+                              : 'Colección',
                       style: Marca.titulo(44)),
                 ],
               ),

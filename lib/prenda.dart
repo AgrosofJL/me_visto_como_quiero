@@ -17,6 +17,9 @@ class Prenda {
   /// Mujer, Hombre, Niños, Unisex o '' (sin definir).
   final String publico;
 
+  /// Rubro al que pertenece (Ropa, Bijouterie...). null = sin rubro.
+  final String? rubroId;
+
   /// Oferta vigente aplicada (se calcula al cargar el catálogo, no se guarda).
   final double? precioOferta;
   final String? ofertaNombre;
@@ -35,6 +38,7 @@ class Prenda {
     this.creadoEn,
     this.stock = const {},
     this.publico = '',
+    this.rubroId,
     this.precioOferta,
     this.ofertaNombre,
     this.ofertaHasta,
@@ -54,6 +58,7 @@ class Prenda {
         creadoEn: creadoEn,
         stock: stock,
         publico: publico,
+        rubroId: rubroId,
         precioOferta: precio,
         ofertaNombre: nombre,
         ofertaHasta: hasta,
@@ -76,6 +81,7 @@ class Prenda {
             e.key.toString(): (e.value as num?)?.toInt() ?? 0,
         },
         publico: (m['publico'] ?? '') as String,
+        rubroId: m['rubro_id'] as String?,
       );
 
   /// Datos para guardar en Supabase (sin el id, que lo genera la base).
@@ -90,6 +96,7 @@ class Prenda {
         'disponible': disponible,
         'stock': stock,
         'publico': publico,
+        'rubro_id': rubroId,
       };
 
   /// Precio en formato argentino: $ 12.500 o $ 12.500,50

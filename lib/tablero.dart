@@ -188,6 +188,7 @@ class TableroTabState extends State<TableroTab> {
       child: _distribucion((v) => [v.canal], ingresos),
     );
     final top = Tarjeta(titulo: 'Más vendidas', child: _topPrendas());
+    final rubros = Tarjeta(titulo: 'Por rubro', child: _porRubro(ingresos));
     final categorias =
         Tarjeta(titulo: 'Por categoría', child: _porCategoria(ingresos));
 
@@ -249,9 +250,10 @@ class TableroTabState extends State<TableroTab> {
       ),
       const SizedBox(height: 14),
       Padding(padding: const EdgeInsets.only(bottom: 14), child: grafico),
+      fila([rubros, categorias]),
       fila([pagos, canales]),
-      fila([top, categorias]),
-      fila([stock, alertas]),
+      fila([top, stock]),
+      alertas,
     ];
   }
 
@@ -341,6 +343,30 @@ class TableroTabState extends State<TableroTab> {
           valorTexto: '${e.value} u.',
           detalle: formatearPrecio(plata[e.key] ?? 0),
           proporcion: e.value / maximo,
+          color: Marca.marfil,
+        ),
+    ]);
+  }
+
+  Widget _porRubro(double total) {
+    final mapa = <String, double>{};
+    final unidades = <String, int>{};
+    for (final v in _ventas) {
+      for (final i in v.items) {
+        final k = i.rubro.isEmpty ? 'Sin rubro' : i.rubro;
+        mapa[k] = (mapa[k] ?? 0) + i.subtotal;
+        unidades[k] = (unidades[k] ?? 0) + i.cantidad;
+      }
+    }
+    if (mapa.isEmpty) return const SinDatos('Sin ventas en el período');
+    final orden = mapa.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    return Column(children: [
+      for (final e in orden)
+        BarraValor(
+          etiqueta: e.key,
+          valorTexto: formatearPrecio(e.value),
+          detalle: '${total > 0 ? (e.value / total * 100).round() : 0}% · ${unidades[e.key]} u.',
+          proporcion: total > 0 ? e.value / total : 0,
           color: Marca.marfil,
         ),
     ]);

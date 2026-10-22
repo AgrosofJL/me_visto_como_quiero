@@ -5,6 +5,7 @@ class ItemVenta {
   final String? prendaId;
   final String nombre;
   final String categoria;
+  final String rubro;
   final String talle;
   final int cantidad;
   final double precioUnitario;
@@ -14,6 +15,7 @@ class ItemVenta {
     required this.prendaId,
     required this.nombre,
     this.categoria = '',
+    this.rubro = '',
     this.talle = talleUnico,
     required this.cantidad,
     required this.precioUnitario,
@@ -27,6 +29,7 @@ class ItemVenta {
         prendaId: m['prenda_id'] as String?,
         nombre: (m['nombre'] ?? '') as String,
         categoria: (m['categoria'] ?? '') as String,
+        rubro: (m['rubro'] ?? '') as String,
         talle: (m['talle'] ?? talleUnico) as String,
         cantidad: (m['cantidad'] as num).toInt(),
         precioUnitario: (m['precio_unitario'] as num).toDouble(),
