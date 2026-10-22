@@ -4,9 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'admin_ui.dart';
+import 'carrito.dart' show confirmar;
 import 'catalogo.dart';
+import 'config.dart';
 import 'prenda.dart';
 import 'servicio.dart';
+import 'ofertas_admin.dart';
+import 'tablero.dart';
+import 'tema.dart';
+import 'ventas_admin.dart';
 
 /// Entrada al panel: muestra el login o la lista de prendas para editar.
 class AdministradorPage extends StatefulWidget {
@@ -182,7 +189,7 @@ class _LoginState extends State<_Login> {
 }
 
 // ------------------------------------------------------------------
-// Lista de prendas para administrar
+// Panel de gestión: Tablero · Ventas · Prendas
 // ------------------------------------------------------------------
 
 class _PanelAdmin extends StatefulWidget {
@@ -194,71 +201,66 @@ class _PanelAdmin extends StatefulWidget {
 }
 
 class _PanelAdminState extends State<_PanelAdmin> {
-  List<Prenda> _prendas = [];
-  bool _cargando = true;
+  int _tab = 0;
+  final _tablero = GlobalKey<TableroTabState>();
+  final _ventas = GlobalKey<VentasTabState>();
+  final _prendas = GlobalKey<_PrendasTabState>();
+  final _ofertas = GlobalKey<OfertasTabState>();
 
-  @override
-  void initState() {
-    super.initState();
-    _cargar();
+  static const _titulos = ['Tablero', 'Ventas', 'Stock y prendas', 'Ofertas'];
+
+  void _refrescarTodo() {
+    _tablero.currentState?.recargar();
+    _ventas.currentState?.recargar();
+    _prendas.currentState?.recargar();
+    _ofertas.currentState?.recargar();
   }
 
-  Future<void> _cargar() async {
-    setState(() => _cargando = true);
-    try {
-      _prendas = await Servicio.listarPrendas();
-    } catch (e) {
-      _avisar('No se pudo cargar: $e');
-    }
-    if (mounted) setState(() => _cargando = false);
-  }
-
-  void _avisar(String texto) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(texto)));
-  }
-
-  Future<void> _editar([Prenda? p]) async {
-    final guardado = await Navigator.push<bool>(
+  Future<void> _nuevaVenta() async {
+    final ok = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => FormularioPrenda(prenda: p)),
+      MaterialPageRoute(builder: (_) => const NuevaVentaPage()),
     );
-    if (guardado == true) _cargar();
-  }
-
-  Future<void> _borrar(Prenda p) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Borrar prenda'),
-        content: Text('¿Seguro que querés borrar "${p.nombre}"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('Borrar')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await Servicio.borrarPrenda(p);
-      _avisar('Prenda borrada');
-      _cargar();
-    } catch (e) {
-      _avisar('No se pudo borrar: $e');
-    }
+    if (ok == true) _refrescarTodo();
   }
 
   @override
   Widget build(BuildContext context) {
+    final ancho = MediaQuery.sizeOf(context).width;
+    final rail = ancho >= 900;
+
+    final cuerpo = IndexedStack(
+      index: _tab,
+      children: [
+        TableroTab(key: _tablero),
+        VentasTab(key: _ventas),
+        _PrendasTab(key: _prendas, onCambio: _refrescarTodo),
+        OfertasTab(key: _ofertas),
+      ],
+    );
+
+    const destinos = [
+      (Icons.dashboard_outlined, Icons.dashboard, 'Tablero'),
+      (Icons.receipt_long_outlined, Icons.receipt_long, 'Ventas'),
+      (Icons.inventory_2_outlined, Icons.inventory_2, 'Stock'),
+      (Icons.local_offer_outlined, Icons.local_offer, 'Ofertas'),
+    ];
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Administrar prendas'),
+        centerTitle: false,
+        title: Text(_titulos[_tab]),
         actions: [
+          IconButton(
+            tooltip: 'Actualizar',
+            onPressed: _refrescarTodo,
+            icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
+            tooltip: 'Ver tienda',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.storefront_outlined),
+          ),
           IconButton(
             tooltip: 'Cerrar sesión',
             icon: const Icon(Icons.logout),
@@ -266,51 +268,347 @@ class _PanelAdminState extends State<_PanelAdmin> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _editar(),
-        icon: const Icon(Icons.add),
-        label: const Text('Nueva prenda'),
-      ),
-      body: _cargando
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _cargar,
-              child: _prendas.isEmpty
-                  ? ListView(children: const [
-                      SizedBox(height: 120),
-                      Center(child: Text('No hay prendas. Tocá "Nueva prenda".')),
-                    ])
-                  : ListView.separated(
-                      padding: const EdgeInsets.only(bottom: 96),
-                      itemCount: _prendas.length,
-                      separatorBuilder: (context, i) => const Divider(height: 1),
-                      itemBuilder: (context, i) {
-                        final p = _prendas[i];
-                        return ListTile(
-                          leading: SizedBox(
-                            width: 52,
-                            height: 52,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: FotoPrenda(url: p.imagenUrl),
-                            ),
-                          ),
-                          title: Text(p.nombre),
-                          subtitle: Text([
-                            p.precioTexto,
-                            if (p.categoria.isNotEmpty) p.categoria,
-                            if (!p.disponible) 'OCULTA',
-                          ].join(' · ')),
-                          onTap: () => _editar(p),
-                          trailing: IconButton(
-                            tooltip: 'Borrar',
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: () => _borrar(p),
-                          ),
-                        );
-                      },
-                    ),
+      floatingActionButton: _tab == 2
+          ? FloatingActionButton.extended(
+              onPressed: () => _prendas.currentState?.editar(),
+              icon: const Icon(Icons.add),
+              label: const Text('Nueva prenda'),
+            )
+          : _tab == 3
+          ? FloatingActionButton.extended(
+              onPressed: () => _ofertas.currentState?.editar(),
+              icon: const Icon(Icons.add),
+              label: const Text('Nueva oferta'),
+            )
+          : FloatingActionButton.extended(
+              onPressed: _nuevaVenta,
+              icon: const Icon(Icons.point_of_sale),
+              label: const Text('Nueva venta'),
             ),
+      bottomNavigationBar: rail
+          ? null
+          : NavigationBar(
+              selectedIndex: _tab,
+              onDestinationSelected: (i) => setState(() => _tab = i),
+              destinations: [
+                for (final d in destinos)
+                  NavigationDestination(
+                      icon: Icon(d.$1),
+                      selectedIcon: Icon(d.$2),
+                      label: d.$3),
+              ],
+            ),
+      body: rail
+          ? Row(children: [
+              NavigationRail(
+                selectedIndex: _tab,
+                onDestinationSelected: (i) => setState(() => _tab = i),
+                labelType: NavigationRailLabelType.all,
+                backgroundColor: Marca.superficie,
+                destinations: [
+                  for (final d in destinos)
+                    NavigationRailDestination(
+                        icon: Icon(d.$1),
+                        selectedIcon: Icon(d.$2),
+                        label: Text(d.$3)),
+                ],
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(child: Centrado(maxAncho: 1300, child: cuerpo)),
+            ])
+          : cuerpo,
+    );
+  }
+}
+
+// ------------------------------------------------------------------
+// Pestaña Stock y prendas
+// ------------------------------------------------------------------
+
+class _PrendasTab extends StatefulWidget {
+  const _PrendasTab({super.key, required this.onCambio});
+  final VoidCallback onCambio;
+
+  @override
+  State<_PrendasTab> createState() => _PrendasTabState();
+}
+
+class _PrendasTabState extends State<_PrendasTab> {
+  List<Prenda> _prendas = [];
+  Map<String, double> _costos = {};
+  bool _cargando = true;
+  String _q = '';
+  String _filtro = 'Todas';
+
+  @override
+  void initState() {
+    super.initState();
+    recargar();
+  }
+
+  Future<void> recargar() async {
+    setState(() => _cargando = true);
+    try {
+      _prendas = await Servicio.catalogo();
+    } catch (e) {
+      if (mounted) avisar(context, 'No se pudo cargar: ${mensajeError(e)}');
+    }
+    try {
+      _costos = await Servicio.listarCostos();
+    } catch (_) {
+      _costos = {}; // Todavía no se corrió 02_stock_ventas.sql
+    }
+    if (mounted) setState(() => _cargando = false);
+  }
+
+  Future<void> editar([Prenda? p]) async {
+    final guardado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FormularioPrenda(
+          prenda: p,
+          costo: p?.id == null ? null : _costos[p!.id],
+        ),
+      ),
+    );
+    if (guardado == true) {
+      recargar();
+      widget.onCambio();
+    }
+  }
+
+  Future<void> _vender(Prenda p) async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => NuevaVentaPage(prendaInicial: p)),
+    );
+    if (ok == true) widget.onCambio();
+  }
+
+  Future<void> _borrar(Prenda p) async {
+    final ok = await confirmar(context, 'Borrar prenda',
+        '¿Seguro que querés borrar "${p.nombre}"? Las ventas ya registradas se conservan.');
+    if (!ok) return;
+    try {
+      await Servicio.borrarPrenda(p);
+      if (mounted) avisar(context, 'Prenda borrada');
+      recargar();
+      widget.onCambio();
+    } catch (e) {
+      if (mounted) avisar(context, 'No se pudo borrar: ${mensajeError(e)}');
+    }
+  }
+
+  bool _tieneBajo(Prenda p) =>
+      p.controlaStock &&
+      p.clavesStock.any((t) {
+        final n = p.stock[t] ?? 0;
+        return n > 0 && n <= Config.stockBajo;
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _q.toLowerCase();
+    final lista = _prendas.where((p) {
+      final okQ = q.isEmpty ||
+          p.nombre.toLowerCase().contains(q) ||
+          p.categoria.toLowerCase().contains(q);
+      final okF = switch (_filtro) {
+        'Sin stock' => p.agotada ||
+            (p.controlaStock && p.clavesStock.any((t) => (p.stock[t] ?? 0) <= 0)),
+        'Stock bajo' => _tieneBajo(p),
+        'Ocultas' => !p.disponible,
+        _ => true,
+      };
+      return okQ && okF;
+    }).toList();
+
+    final totalUnidades = _prendas
+        .where((p) => p.controlaStock)
+        .fold<int>(0, (s, p) => s + p.stockTotal);
+
+    return RefreshIndicator(
+      onRefresh: recargar,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        children: [
+          TextField(
+            decoration: const InputDecoration(
+              hintText: 'Buscar prenda o categoría…',
+              prefixIcon: Icon(Icons.search),
+              isDense: true,
+            ),
+            onChanged: (v) => setState(() => _q = v),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final f in ['Todas', 'Sin stock', 'Stock bajo', 'Ocultas'])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(f,
+                          style: TextStyle(
+                              color: _filtro == f
+                                  ? Marca.negro
+                                  : Marca.marfil)),
+                      selected: _filtro == f,
+                      onSelected: (_) => setState(() => _filtro = f),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text('${_prendas.length} prendas · $totalUnidades unidades en stock',
+              style: const TextStyle(color: Marca.gris, fontSize: 12)),
+          const SizedBox(height: 10),
+          if (_cargando)
+            const Padding(
+              padding: EdgeInsets.all(40),
+              child: Center(
+                  child: CircularProgressIndicator(color: Marca.champagne)),
+            )
+          else if (lista.isEmpty)
+            const SinDatos('No hay prendas para mostrar')
+          else
+            Tarjeta(
+              padding: EdgeInsets.zero,
+              child: Column(children: [
+                for (final p in lista) ...[
+                  _FilaPrenda(
+                    prenda: p,
+                    costo: _costos[p.id],
+                    onTap: () => editar(p),
+                    onVender: () => _vender(p),
+                    onBorrar: () => _borrar(p),
+                  ),
+                  if (p != lista.last) const Divider(),
+                ],
+              ]),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilaPrenda extends StatelessWidget {
+  const _FilaPrenda({
+    required this.prenda,
+    required this.costo,
+    required this.onTap,
+    required this.onVender,
+    required this.onBorrar,
+  });
+  final Prenda prenda;
+  final double? costo;
+  final VoidCallback onTap;
+  final VoidCallback onVender;
+  final VoidCallback onBorrar;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = prenda;
+    final error = Theme.of(context).colorScheme.error;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 56,
+              height: 70,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: FotoPrenda(url: p.imagenUrl),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Flexible(
+                      child: Text(p.nombre,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w500)),
+                    ),
+                    if (!p.disponible) ...[
+                      const SizedBox(width: 6),
+                      const Icon(Icons.visibility_off,
+                          size: 14, color: Marca.gris),
+                    ],
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      p.enOferta
+                          ? '${p.precioFinalTexto} (oferta, lista ${p.precioTexto})'
+                          : p.precioTexto,
+                      if (costo != null && costo! > 0)
+                        'costo ${formatearPrecio(costo!)}',
+                      if (p.categoria.isNotEmpty) p.categoria,
+                      if (p.publico.isNotEmpty) p.publico,
+                    ].join(' · '),
+                    style: const TextStyle(color: Marca.gris, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  if (!p.controlaStock)
+                    const Text('Sin control de stock',
+                        style: TextStyle(color: Marca.gris, fontSize: 11))
+                  else
+                    Wrap(spacing: 6, runSpacing: 4, children: [
+                      for (final t in p.clavesStock)
+                        Builder(builder: (context) {
+                          final n = p.stock[t] ?? 0;
+                          final color = n <= 0
+                              ? error
+                              : n <= Config.stockBajo
+                                  ? const Color(0xFFE0B354)
+                                  : Marca.marfil;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                  color: color.withValues(alpha: .6)),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              t == talleUnico ? '$n u.' : '$t: $n',
+                              style: TextStyle(
+                                  color: color,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          );
+                        }),
+                    ]),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Registrar venta',
+              onPressed: p.agotada ? null : onVender,
+              icon: const Icon(Icons.point_of_sale, color: Marca.champagne),
+            ),
+            PopupMenuButton<String>(
+              onSelected: (v) => v == 'editar' ? onTap() : onBorrar(),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'editar', child: Text('Editar / stock')),
+                PopupMenuItem(value: 'borrar', child: Text('Borrar')),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -320,8 +618,11 @@ class _PanelAdminState extends State<_PanelAdmin> {
 // ------------------------------------------------------------------
 
 class FormularioPrenda extends StatefulWidget {
-  const FormularioPrenda({super.key, this.prenda});
+  const FormularioPrenda({super.key, this.prenda, this.costo});
   final Prenda? prenda;
+
+  /// Costo de compra actual (solo lo ve el admin).
+  final double? costo;
 
   @override
   State<FormularioPrenda> createState() => _FormularioPrendaState();
@@ -339,6 +640,28 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
   late final _talles =
       TextEditingController(text: widget.prenda?.talles.join(', '));
   late bool _disponible = widget.prenda?.disponible ?? true;
+  late final _costo = TextEditingController(
+      text: widget.costo == null ? '' : _numATexto(widget.costo!));
+  late bool _controlaStock = widget.prenda?.controlaStock ?? true;
+  late String _publico = widget.prenda?.publico ?? '';
+  final Map<String, TextEditingController> _stockCtrl = {};
+
+  List<String> get _tallesActuales => _talles.text
+      .split(',')
+      .map((t) => t.trim())
+      .where((t) => t.isNotEmpty)
+      .toList();
+
+  List<String> get _clavesStock =>
+      _tallesActuales.isEmpty ? const [talleUnico] : _tallesActuales;
+
+  TextEditingController _ctrlStock(String talle) => _stockCtrl.putIfAbsent(
+      talle,
+      () => TextEditingController(
+          text: '${widget.prenda?.stock[talle] ?? 0}'));
+
+  int get _stockTotalForm => _clavesStock.fold<int>(
+      0, (s, t) => s + (int.tryParse(_ctrlStock(t).text.trim()) ?? 0));
 
   XFile? _fotoNueva;
   Uint8List? _fotoBytes;
@@ -349,7 +672,10 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
 
   @override
   void dispose() {
-    for (final c in [_nombre, _descripcion, _precio, _categoria, _talles]) {
+    for (final c in [_nombre, _descripcion, _precio, _categoria, _talles, _costo]) {
+      c.dispose();
+    }
+    for (final c in _stockCtrl.values) {
       c.dispose();
     }
     super.dispose();
@@ -409,8 +735,21 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
         imagenUrl: url,
         imagenPath: ruta,
         disponible: _disponible,
+        publico: _publico,
+        stock: _controlaStock
+            ? {
+                for (final t in _clavesStock)
+                  t: (int.tryParse(_ctrlStock(t).text.trim()) ?? 0)
+                      .clamp(0, 99999),
+              }
+            : const {},
       );
-      await Servicio.guardarPrenda(prenda);
+      final id = await Servicio.guardarPrenda(prenda);
+
+      final costo = _leerPrecio(_costo.text);
+      if (costo != null && costo != widget.costo) {
+        await Servicio.guardarCosto(id, costo);
+      }
 
       // Si se cambió la foto, borra la anterior para no ocupar espacio.
       if (rutaVieja != null && rutaVieja != ruta) {
@@ -420,12 +759,68 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo guardar: $e')),
+          SnackBar(content: Text('No se pudo guardar: ${mensajeError(e)}')),
         );
       }
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
+  }
+
+  String? _textoMargen() {
+    final precio = _leerPrecio(_precio.text);
+    final costo = _leerPrecio(_costo.text);
+    if (precio == null || costo == null || costo <= 0 || precio <= 0) {
+      return null;
+    }
+    final g = precio - costo;
+    return 'Ganancia por unidad: ${formatearPrecio(g)} (${(g / precio * 100).round()}%)';
+  }
+
+  Widget _seccionStock() {
+    return Tarjeta(
+      titulo: 'Stock',
+      accion: Switch(
+        value: _controlaStock,
+        onChanged: (v) => setState(() => _controlaStock = v),
+      ),
+      child: !_controlaStock
+          ? const Text(
+              'Sin control de stock: se puede vender siempre y no se descuenta.',
+              style: TextStyle(color: Marca.gris))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final t in _clavesStock)
+                      SizedBox(
+                        width: 96,
+                        child: TextField(
+                          controller: _ctrlStock(t),
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          decoration: InputDecoration(
+                            labelText: t == talleUnico ? 'Unidades' : 'Talle $t',
+                            isDense: true,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text('Total: $_stockTotalForm unidades',
+                    style: const TextStyle(color: Marca.gris)),
+                const Text(
+                  'Al registrar una venta se descuenta solo. Si entra mercadería, sumala acá.',
+                  style: TextStyle(color: Marca.gris, fontSize: 12),
+                ),
+              ],
+            ),
+    );
   }
 
   @override
@@ -484,8 +879,34 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
                   const TextInputType.numberWithOptions(decimal: true),
               validator: (v) =>
                   _leerPrecio(v ?? '') == null ? 'Precio inválido' : null,
+              onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
+            TextFormField(
+              controller: _costo,
+              decoration: InputDecoration(
+                labelText: 'Costo (lo que te salió) — solo lo ves vos',
+                prefixText: '\$ ',
+                helperText: _textoMargen(),
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            Text('¿PARA QUIÉN ES?', style: Marca.etiqueta()),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final pub in Config.publicos)
+                ChoiceChip(
+                  label: Text(pub,
+                      style: TextStyle(
+                          color: _publico == pub ? Marca.negro : Marca.marfil)),
+                  selected: _publico == pub,
+                  onSelected: (sel) => setState(() => _publico = sel ? pub : ''),
+                ),
+            ]),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _categoria,
               decoration: const InputDecoration(
@@ -499,7 +920,10 @@ class _FormularioPrendaState extends State<FormularioPrenda> {
               decoration: const InputDecoration(
                   labelText: 'Talles', hintText: 'Separados por coma: S, M, L'),
               textCapitalization: TextCapitalization.characters,
+              onChanged: (_) => setState(() {}),
             ),
+            const SizedBox(height: 16),
+            _seccionStock(),
             const SizedBox(height: 12),
             TextFormField(
               controller: _descripcion,

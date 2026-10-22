@@ -11,6 +11,25 @@ Tienda de ropa hecha en Flutter (Android, iPhone y web) con datos en Supabase.
 
 Sin Mercado Pago: el pago se coordina por WhatsApp (efectivo o transferencia).
 
+### Panel de gestión (admin)
+
+- **Tablero:** ingresos, ganancia y margen, cantidad de ventas, ticket promedio,
+  prendas vendidas (con % vs. período anterior), gráfico de ingresos por día/mes,
+  ventas por forma de pago, por canal y por categoría, ranking de más vendidas,
+  valor del stock y alertas de stock bajo / sin stock.
+- **Ventas:** registrar ventas (varias prendas por ticket, talle, cantidad y
+  **precio real al que se vendió**), forma de pago y canal. Descuenta el stock solo.
+  Listado por día y opción de **anular** (devuelve el stock).
+- **Stock y prendas:** stock por talle, costo de compra (privado), filtros de
+  sin stock / stock bajo / ocultas y botón rápido para vender.
+- **Ofertas:** agrupá prendas con un % OFF o precio especial por prenda, con
+  fecha de inicio/fin opcional. Se pueden pausar. En la tienda aparece un banner,
+  el filtro "Ofertas", el precio tachado y la cuenta regresiva.
+- **Público:** cada prenda se marca Mujer / Hombre / Niños / Unisex y la tienda
+  muestra pestañas para filtrar (Unisex aparece en Mujer y Hombre).
+- En la tienda, lo que no tiene stock aparece **AGOTADO** y los talles sin stock
+  no se pueden elegir.
+
 Los cambios se ven al instante para todos. No hace falta actualizar la app ni tocar GitHub.
 
 ## Estructura
@@ -25,16 +44,26 @@ Los cambios se ven al instante para todos. No hace falta actualizar la app ni to
 | `lib/main.dart` | Arranque y colores de la app |
 | `lib/catalogo.dart` | Inicio: portada, colección, pie de página |
 | `lib/pagina.dart` | Detalle de una prenda: talle, cantidad, agregar o reservar |
-| `lib/administrador.dart` | Login, lista de prendas y formulario de carga |
+| `lib/administrador.dart` | Login, panel con pestañas y formulario de prenda (stock + costo) |
+| `lib/tablero.dart` | Tablero de control (KPIs, gráficos, alertas) |
+| `lib/ventas_admin.dart` | Listado de ventas, nueva venta y anulación |
+| `lib/venta.dart` | Modelo de ventas y períodos de fechas |
+| `lib/admin_ui.dart` | Componentes visuales del panel |
+| `lib/oferta.dart` | Modelo de ofertas y cálculo del precio final |
+| `lib/ofertas_admin.dart` | Pestaña y formulario de ofertas |
 | `lib/servicio.dart` | Todas las llamadas a Supabase |
 | `lib/prenda.dart` | Modelo de datos |
 | `supabase/esquema.sql` | Tablas, seguridad y bucket de fotos |
+| `supabase/02_stock_ventas.sql` | Stock, costos, ventas y funciones para vender/anular |
+| `supabase/03_ofertas_publico.sql` | Ofertas y público de cada prenda |
 | `.github/workflows/web.yml` | Publica la web en GitHub Pages automáticamente |
 
 ## Puesta en marcha (una sola vez)
 
 1. **Base de datos:** en Supabase > *SQL Editor* pegá `supabase/esquema.sql`,
    cambiá los dos emails del final por los reales y tocá **Run**.
+   Después, en consultas nuevas, corré `supabase/02_stock_ventas.sql` y
+   `supabase/03_ofertas_publico.sql` (en ese orden).
 2. **Usuarios:** en Supabase > *Authentication > Users > Add user > Create new user*,
    creá un usuario para cada administrador (mismo email que pusiste en el SQL,
    tildando *Auto Confirm User*).

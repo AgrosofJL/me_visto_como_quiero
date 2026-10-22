@@ -11,6 +11,17 @@ class Prenda {
   final bool disponible;
   final DateTime? creadoEn;
 
+  /// Stock por talle, ej. {"S": 3, "M": 0}. Vacío = no controla stock.
+  final Map<String, int> stock;
+
+  /// Mujer, Hombre, Niños, Unisex o '' (sin definir).
+  final String publico;
+
+  /// Oferta vigente aplicada (se calcula al cargar el catálogo, no se guarda).
+  final double? precioOferta;
+  final String? ofertaNombre;
+  final DateTime? ofertaHasta;
+
   const Prenda({
     this.id,
     required this.nombre,
@@ -22,7 +33,31 @@ class Prenda {
     this.imagenPath,
     this.disponible = true,
     this.creadoEn,
+    this.stock = const {},
+    this.publico = '',
+    this.precioOferta,
+    this.ofertaNombre,
+    this.ofertaHasta,
   });
+
+  /// Copia de la prenda con una oferta aplicada.
+  Prenda conOferta(double precio, String nombre, DateTime? hasta) => Prenda(
+        id: id,
+        nombre: this.nombre,
+        descripcion: descripcion,
+        precio: this.precio,
+        categoria: categoria,
+        talles: talles,
+        imagenUrl: imagenUrl,
+        imagenPath: imagenPath,
+        disponible: disponible,
+        creadoEn: creadoEn,
+        stock: stock,
+        publico: publico,
+        precioOferta: precio,
+        ofertaNombre: nombre,
+        ofertaHasta: hasta,
+      );
 
   factory Prenda.fromMap(Map<String, dynamic> m) => Prenda(
         id: m['id'] as String?,
@@ -36,6 +71,11 @@ class Prenda {
         imagenPath: m['imagen_path'] as String?,
         disponible: (m['disponible'] ?? true) as bool,
         creadoEn: DateTime.tryParse((m['created_at'] ?? '').toString()),
+        stock: {
+          for (final e in ((m['stock'] as Map?) ?? const {}).entries)
+            e.key.toString(): (e.value as num?)?.toInt() ?? 0,
+        },
+        publico: (m['publico'] ?? '') as String,
       );
 
   /// Datos para guardar en Supabase (sin el id, que lo genera la base).
@@ -48,15 +88,48 @@ class Prenda {
         'imagen_url': imagenUrl,
         'imagen_path': imagenPath,
         'disponible': disponible,
+        'stock': stock,
+        'publico': publico,
       };
 
   /// Precio en formato argentino: $ 12.500 o $ 12.500,50
   String get precioTexto => formatearPrecio(precio);
 
+  /// Está en oferta (con un precio menor al de lista).
+  bool get enOferta => precioOferta != null && precioOferta! < precio;
+
+  /// Precio que paga el cliente hoy.
+  double get precioFinal => enOferta ? precioOferta! : precio;
+  String get precioFinalTexto => formatearPrecio(precioFinal);
+
+  /// % de descuento redondeado (ej. 20).
+  int get descuentoPct =>
+      enOferta && precio > 0 ? ((1 - precioOferta! / precio) * 100).round() : 0;
+
   /// Cargada en los últimos 10 días: se muestra la etiqueta "NUEVO".
+  /// Talles para el stock: si no tiene talles se usa "Único".
+  List<String> get clavesStock => talles.isEmpty ? const [talleUnico] : talles;
+
+  bool get controlaStock => stock.isNotEmpty;
+
+  /// Unidades disponibles de un talle (null = sin control de stock).
+  int? stockDe(String? talle) =>
+      controlaStock ? (stock[talle ?? talleUnico] ?? 0) : null;
+
+  int get stockTotal => stock.values.fold<int>(0, (a, b) => a + b);
+
+  bool get agotada => controlaStock && stockTotal <= 0;
+
+  bool hayStock(String? talle, [int cantidad = 1]) {
+    final s = stockDe(talle);
+    return s == null || s >= cantidad;
+  }
+
   bool get esNueva =>
       creadoEn != null && DateTime.now().difference(creadoEn!).inDays < 10;
 }
+
+const talleUnico = 'Único';
 
 String formatearPrecio(double valor) {
   final entero = valor.truncate();

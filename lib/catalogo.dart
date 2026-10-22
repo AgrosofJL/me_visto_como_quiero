@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'administrador.dart';
 import 'carrito.dart';
 import 'config.dart';
+import 'oferta.dart';
 import 'pagina.dart';
 import 'prenda.dart';
 import 'servicio.dart';
@@ -27,6 +28,8 @@ class _CatalogoPageState extends State<CatalogoPage> {
   String _categoria = 'Todo';
   String _busqueda = '';
   String _orden = 'Novedades';
+  String _publico = 'Todo';
+  bool _soloOfertas = false;
 
   @override
   void initState() {
@@ -40,7 +43,7 @@ class _CatalogoPageState extends State<CatalogoPage> {
       _error = null;
     });
     try {
-      final lista = await Servicio.listarPrendas();
+      final lista = await Servicio.catalogo();
       if (!mounted) return;
       setState(() => _prendas = lista.where((p) => p.disponible).toList());
     } catch (_) {
@@ -65,19 +68,42 @@ class _CatalogoPageState extends State<CatalogoPage> {
     final q = _busqueda.toLowerCase().trim();
     final lista = _prendas.where((p) {
       final okCat = _categoria == 'Todo' || p.categoria.trim() == _categoria;
+      final okPub = _coincidePublico(p, _publico);
+      final okOferta = !_soloOfertas || p.enOferta;
       final okBusq = q.isEmpty ||
           p.nombre.toLowerCase().contains(q) ||
           p.descripcion.toLowerCase().contains(q) ||
           p.categoria.toLowerCase().contains(q);
-      return okCat && okBusq;
+      return okCat && okBusq && okPub && okOferta;
     }).toList();
     switch (_orden) {
       case 'Menor precio':
-        lista.sort((a, b) => a.precio.compareTo(b.precio));
+        lista.sort((a, b) => a.precioFinal.compareTo(b.precioFinal));
       case 'Mayor precio':
-        lista.sort((a, b) => b.precio.compareTo(a.precio));
+        lista.sort((a, b) => b.precioFinal.compareTo(a.precioFinal));
     }
     return lista;
+  }
+
+  /// "Unisex" también aparece al filtrar Mujer u Hombre.
+  static bool _coincidePublico(Prenda p, String publico) {
+    if (publico == 'Todo') return true;
+    if (p.publico == publico) return true;
+    return p.publico == 'Unisex' && (publico == 'Mujer' || publico == 'Hombre');
+  }
+
+  List<String> get _publicosDisponibles => [
+        'Todo',
+        for (final pub in Config.publicos)
+          if (_prendas.any((p) => p.publico == pub)) pub,
+      ];
+
+  void _verOfertas() {
+    setState(() {
+      _soloOfertas = true;
+      _categoria = 'Todo';
+    });
+    _irAColeccion();
   }
 
   void _irAColeccion() {
@@ -235,10 +261,115 @@ class _CatalogoPageState extends State<CatalogoPage> {
     );
   }
 
+  Widget _bannerOfertas() {
+    final enOferta = _prendas.where((p) => p.enOferta).toList();
+    if (enOferta.isEmpty) return const SizedBox.shrink();
+    final nombres = enOferta.map((p) => p.ofertaNombre!).toSet().toList();
+    final maxDesc = enOferta.map((p) => p.descuentoPct).reduce(math.max);
+    final vencimientos = enOferta
+        .map((p) => p.ofertaHasta)
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+    final vence =
+        vencimientos.isEmpty ? null : textoVencimiento(vencimientos.first);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: InkWell(
+        onTap: _verOfertas,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Marca.champagne, Marca.champagneOscuro],
+            ),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(nombres.join(' · ').toUpperCase(),
+                        style: Marca.etiqueta(color: Marca.negro)),
+                    const SizedBox(height: 4),
+                    Text('Hasta $maxDesc% OFF',
+                        style: Marca.titulo(36,
+                            color: Marca.negro, peso: FontWeight.w700)),
+                    Text(
+                      '${enOferta.length} prendas en oferta'
+                      '${vence != null ? ' · $vence' : ''}',
+                      style: const TextStyle(color: Marca.negro),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                color: Marca.negro,
+                child: Text('VER OFERTAS',
+                    style: Marca.etiqueta(color: Marca.marfil, size: 11)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pestanasPublico() {
+    final pubs = _publicosDisponibles;
+    if (pubs.length <= 1) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final pub in pubs)
+              InkWell(
+                onTap: () => setState(() {
+                  _publico = pub;
+                  _categoria = 'Todo';
+                }),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        width: 2,
+                        color: _publico == pub
+                            ? Marca.champagne
+                            : Colors.transparent,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    pub.toUpperCase(),
+                    style: Marca.etiqueta(
+                      size: 13,
+                      color: _publico == pub ? Marca.marfil : Marca.gris,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _filtros() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _bannerOfertas(),
+        _pestanasPublico(),
         const SizedBox(height: 24),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -247,9 +378,16 @@ class _CatalogoPageState extends State<CatalogoPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('NUESTRA', style: Marca.etiqueta(color: Marca.champagne)),
+                  Text(
+                      _soloOfertas
+                          ? 'SOLO'
+                          : _publico == 'Todo'
+                              ? 'NUESTRA'
+                              : _publico.toUpperCase(),
+                      style: Marca.etiqueta(color: Marca.champagne)),
                   const SizedBox(height: 4),
-                  Text('Colección', style: Marca.titulo(44)),
+                  Text(_soloOfertas ? 'Ofertas' : 'Colección',
+                      style: Marca.titulo(44)),
                 ],
               ),
             ),
@@ -280,16 +418,32 @@ class _CatalogoPageState extends State<CatalogoPage> {
           ),
           onChanged: (v) => setState(() => _busqueda = v),
         ),
-        if (_categorias.length > 1) ...[
+        if (_categorias.length > 1 || _prendas.any((p) => p.enOferta)) ...[
           const SizedBox(height: 12),
           SizedBox(
             height: 40,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: _categorias.length,
+              itemCount: _categorias.length + 1,
               separatorBuilder: (context, i) => const SizedBox(width: 8),
               itemBuilder: (context, i) {
-                final c = _categorias[i];
+                if (i == 0) {
+                  return FilterChip(
+                    avatar: Icon(Icons.local_offer_outlined,
+                        size: 16,
+                        color: _soloOfertas ? Marca.negro : Marca.champagne),
+                    label: Text('Ofertas',
+                        style: TextStyle(
+                            color:
+                                _soloOfertas ? Marca.negro : Marca.champagne)),
+                    selected: _soloOfertas,
+                    selectedColor: Marca.champagne,
+                    side: const BorderSide(color: Marca.champagne),
+                    showCheckmark: false,
+                    onSelected: (v) => setState(() => _soloOfertas = v),
+                  );
+                }
+                final c = _categorias[i - 1];
                 final sel = _categoria == c;
                 return ChoiceChip(
                   label: Text(c,
@@ -396,7 +550,8 @@ class _TarjetaPrendaState extends State<TarjetaPrenda> {
 
   void _agregarRapido() {
     final p = widget.prenda;
-    if (p.talles.isNotEmpty) {
+    if (p.agotada) return;
+    if (p.talles.isNotEmpty || !p.hayStock(null)) {
       _abrir(); // tiene talles: que elija en la página de la prenda
       return;
     }
@@ -433,7 +588,49 @@ class _TarjetaPrendaState extends State<TarjetaPrenda> {
                         ),
                       ),
                     ),
-                    if (p.esNueva)
+                    if (p.agotada)
+                      Container(
+                        color: Colors.black.withValues(alpha: .55),
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                              border: Border.all(color: Marca.marfil)),
+                          child: Text('AGOTADO',
+                              style: Marca.etiqueta(
+                                  color: Marca.marfil, size: 11)),
+                        ),
+                      ),
+                    if (!p.agotada &&
+                        p.controlaStock &&
+                        p.stockTotal <= Config.stockBajo)
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          color: Marca.champagne,
+                          child: Text('ÚLTIMAS',
+                              style: Marca.etiqueta(
+                                  color: Marca.negro, size: 10)),
+                        ),
+                      ),
+                    if (p.enOferta)
+                      Positioned(
+                        top: 10,
+                        left: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          color: Marca.champagne,
+                          child: Text('-${p.descuentoPct}%',
+                              style: Marca.etiqueta(
+                                  color: Marca.negro, size: 11)),
+                        ),
+                      ),
+                    if (p.esNueva && !p.enOferta)
                       Positioned(
                         top: 10,
                         left: 10,
@@ -446,6 +643,7 @@ class _TarjetaPrendaState extends State<TarjetaPrenda> {
                                   color: Marca.negro, size: 10)),
                         ),
                       ),
+                    if (!p.agotada)
                     Positioned(
                       right: 8,
                       bottom: 8,
@@ -482,9 +680,22 @@ class _TarjetaPrendaState extends State<TarjetaPrenda> {
                           fontSize: 15, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 4),
-                    Text(p.precioTexto,
-                        style: Marca.titulo(22,
-                            color: Marca.champagne, peso: FontWeight.w600)),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      children: [
+                        Text(p.precioFinalTexto,
+                            style: Marca.titulo(22,
+                                color: Marca.champagne,
+                                peso: FontWeight.w600)),
+                        if (p.enOferta)
+                          Text(p.precioTexto,
+                              style: const TextStyle(
+                                  color: Marca.gris,
+                                  fontSize: 12,
+                                  decoration: TextDecoration.lineThrough)),
+                      ],
+                    ),
                   ],
                 ),
               ),

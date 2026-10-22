@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
+import 'oferta.dart';
 import 'prenda.dart';
+import 'venta.dart';
 
 /// Todo lo que habla con Supabase está acá.
 class Servicio {
@@ -20,12 +22,113 @@ class Servicio {
     return filas.map(Prenda.fromMap).toList();
   }
 
-  static Future<void> guardarPrenda(Prenda p) async {
-    if (p.id == null) {
-      await _db.from('prendas').insert(p.toMap());
-    } else {
-      await _db.from('prendas').update(p.toMap()).eq('id', p.id!);
+  /// Catálogo con las ofertas vigentes ya aplicadas a cada prenda.
+  static Future<List<Prenda>> catalogo() async {
+    final prendas = await listarPrendas();
+    try {
+      return aplicarOfertas(prendas, await listarOfertas());
+    } catch (_) {
+      return prendas; // Si todavía no existe la tabla de ofertas
     }
+  }
+
+  // ---------- Ofertas ----------
+
+  /// Visitantes: solo vigentes. Admin: todas.
+  static Future<List<Oferta>> listarOfertas() async {
+    final filas = await _db
+        .from('ofertas')
+        .select('*, oferta_prendas(*)')
+        .order('created_at', ascending: false);
+    return filas.map(Oferta.fromMap).toList();
+  }
+
+  /// Crea o actualiza la oferta y reemplaza su lista de prendas.
+  static Future<void> guardarOferta(Oferta o) async {
+    String id;
+    if (o.id == null) {
+      final fila =
+          await _db.from('ofertas').insert(o.toMap()).select('id').single();
+      id = fila['id'] as String;
+    } else {
+      id = o.id!;
+      await _db.from('ofertas').update(o.toMap()).eq('id', id);
+      await _db.from('oferta_prendas').delete().eq('oferta_id', id);
+    }
+    if (o.prendas.isNotEmpty) {
+      await _db.from('oferta_prendas').insert([
+        for (final e in o.prendas.entries)
+          {'oferta_id': id, 'prenda_id': e.key, 'precio_especial': e.value},
+      ]);
+    }
+  }
+
+  static Future<void> activarOferta(String id, bool activa) async {
+    await _db.from('ofertas').update({'activa': activa}).eq('id', id);
+  }
+
+  static Future<void> borrarOferta(String id) async {
+    await _db.from('ofertas').delete().eq('id', id);
+  }
+
+  /// Guarda la prenda y devuelve su id.
+  static Future<String> guardarPrenda(Prenda p) async {
+    if (p.id == null) {
+      final fila =
+          await _db.from('prendas').insert(p.toMap()).select('id').single();
+      return fila['id'] as String;
+    }
+    await _db.from('prendas').update(p.toMap()).eq('id', p.id!);
+    return p.id!;
+  }
+
+  // ---------- Costos (solo admin) ----------
+
+  static Future<Map<String, double>> listarCostos() async {
+    final filas = await _db.from('costos').select();
+    return {
+      for (final f in filas)
+        f['prenda_id'] as String: (f['costo'] as num).toDouble(),
+    };
+  }
+
+  static Future<void> guardarCosto(String prendaId, double costo) async {
+    await _db.from('costos').upsert({'prenda_id': prendaId, 'costo': costo});
+  }
+
+  // ---------- Ventas (solo admin) ----------
+
+  /// Registra la venta y descuenta stock. Si no alcanza el stock, tira error.
+  static Future<String> registrarVenta({
+    required List<ItemVenta> items,
+    required String formaPago,
+    required String canal,
+    String cliente = '',
+    String nota = '',
+  }) async {
+    final id = await _db.rpc('registrar_venta', params: {
+      'p_items': items.map((i) => i.toRpc()).toList(),
+      'p_forma_pago': formaPago,
+      'p_cliente': cliente,
+      'p_nota': nota,
+      'p_canal': canal,
+    });
+    return id as String;
+  }
+
+  static Future<void> anularVenta(String id) async {
+    await _db.rpc('anular_venta', params: {'p_venta': id});
+  }
+
+  /// Ventas entre [desde] (incluido) y [hasta] (excluido), con sus ítems.
+  static Future<List<Venta>> listarVentas(DateTime desde, DateTime hasta) async {
+    final filas = await _db
+        .from('ventas')
+        .select('*, venta_items(*)')
+        .gte('fecha', desde.toUtc().toIso8601String())
+        .lt('fecha', hasta.toUtc().toIso8601String())
+        .order('fecha', ascending: false);
+    return filas.map(Venta.fromMap).toList();
   }
 
   static Future<void> borrarPrenda(Prenda p) async {

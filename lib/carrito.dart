@@ -30,7 +30,7 @@ class ItemCarrito {
       ItemCarrito(
         prendaId: p.id ?? p.nombre,
         nombre: p.nombre,
-        precio: p.precio,
+        precio: p.precioFinal,
         talle: talle,
         imagenUrl: p.imagenUrl,
         cantidad: cantidad,

@@ -2,7 +2,7 @@ name: me_visto_como_quiero
 description: "Any.G - Me visto como quiero. Tienda de ropa con pedidos por WhatsApp."
 publish_to: 'none'
 
-version: 1.1.0+2
+version: 1.3.0+4
 
 environment:
   sdk: ^3.11.0
@@ -23,24 +23,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.1
-
-flutter_launcher_icons:
-  android: "launcher_icon"
-  ios: true
-  image_path: "logo/logo.png"
-  min_sdk_android: 21 # opcional
-  # Si usás Adaptive Icons para Android moderno:
-  adaptive_icon_background: "#FFFFFF" # o un asset de imagen: "assets/icon/background.png"
-  adaptive_icon_foreground: "logo/logo.png"
-  
-  # Si también compilas para desktop / web:
-  web:
-    generate: true
-    image_path: "logo/logo.png"
-  windows:
-    generate: true
-    image_path: "logo/logo.png"
 
 flutter:
   uses-material-design: true

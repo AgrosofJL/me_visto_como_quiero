@@ -56,6 +56,25 @@ class Config {
   /// Se ofrece envío a domicilio además de retiro en el local.
   static const ofreceEnvio = true;
 
+  /// Públicos para filtrar el catálogo. "Unisex" aparece también en Mujer y Hombre.
+  static const publicos = ['Mujer', 'Hombre', 'Niños', 'Unisex'];
+
+  // ---------------- Gestión (panel admin) ----------------
+  /// Formas de pago para registrar ventas en el local.
+  static const formasDePagoVenta = [
+    'Efectivo',
+    'Transferencia',
+    'Débito',
+    'Crédito',
+    'Mercado Pago',
+  ];
+
+  /// Por dónde entró la venta (sirve para ver qué canal vende más).
+  static const canalesVenta = ['Local', 'WhatsApp', 'Instagram', 'Otro'];
+
+  /// Con esta cantidad o menos, un talle aparece como "stock bajo".
+  static const stockBajo = 2;
+
   /// Nombre del "bucket" de Supabase Storage donde se guardan las fotos.
   static const bucketFotos = 'fotos';
 }

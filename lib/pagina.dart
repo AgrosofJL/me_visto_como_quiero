@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'carrito.dart';
 import 'catalogo.dart';
 import 'config.dart';
+import 'oferta.dart';
 import 'pedido.dart';
 import 'prenda.dart';
 import 'tema.dart';
@@ -25,6 +27,19 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
     final falta = widget.prenda.talles.isNotEmpty && _talle == null;
     setState(() => _faltaTalle = falta);
     return !falta;
+  }
+
+  /// Máximo que se puede pedir del talle elegido (null = sin límite).
+  int? get _maximo => widget.prenda.talles.isNotEmpty && _talle == null
+      ? null
+      : widget.prenda.stockDe(_talle);
+
+  Future<void> _consultarReposicion() async {
+    final p = widget.prenda;
+    final texto = '¡Hola ${Config.nombreTienda}! Vi "${p.nombre}" agotado. '
+        '¿Va a volver a entrar?';
+    await launchUrl(Uri.https('wa.me', '/${Config.whatsapp}', {'text': texto}),
+        mode: LaunchMode.externalApplication);
   }
 
   void _agregar() {
@@ -77,9 +92,50 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
           const SizedBox(height: 10),
           Text(p.nombre, style: Marca.titulo(dosColumnas ? 46 : 38)),
           const SizedBox(height: 12),
-          Text(p.precioTexto,
-              style: Marca.titulo(34,
-                  color: Marca.champagne, peso: FontWeight.w600)),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 6,
+            children: [
+              Text(p.precioFinalTexto,
+                  style: Marca.titulo(34,
+                      color: Marca.champagne, peso: FontWeight.w600)),
+              if (p.enOferta) ...[
+                Text(p.precioTexto,
+                    style: const TextStyle(
+                        color: Marca.gris,
+                        fontSize: 16,
+                        decoration: TextDecoration.lineThrough)),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  color: Marca.champagne,
+                  child: Text('-${p.descuentoPct}%',
+                      style: Marca.etiqueta(color: Marca.negro, size: 11)),
+                ),
+              ],
+            ],
+          ),
+          if (p.enOferta)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(children: [
+                const Icon(Icons.local_offer_outlined,
+                    size: 15, color: Marca.champagne),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    [
+                      p.ofertaNombre!,
+                      if (textoVencimiento(p.ofertaHasta) != null)
+                        textoVencimiento(p.ofertaHasta)!,
+                    ].join(' · '),
+                    style: const TextStyle(
+                        color: Marca.champagne, fontSize: 13),
+                  ),
+                ),
+              ]),
+            ),
           if (p.talles.isNotEmpty) ...[
             const SizedBox(height: 28),
             Row(children: [
@@ -101,9 +157,11 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
                   _BotonTalle(
                     texto: t,
                     seleccionado: _talle == t,
+                    sinStock: !p.hayStock(t),
                     onTap: () => setState(() {
                       _talle = t;
                       _faltaTalle = false;
+                      _cantidad = 1;
                     }),
                   ),
               ],
@@ -116,26 +174,52 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
             valor: _cantidad,
             onMenos: () =>
                 setState(() => _cantidad = (_cantidad - 1).clamp(1, 99)),
-            onMas: () => setState(() => _cantidad = (_cantidad + 1).clamp(1, 99)),
+            onMas: () => setState(() {
+              final max = _maximo ?? 99;
+              if (_cantidad < max) _cantidad++;
+            }),
           ),
+          if (_maximo != null && _maximo! <= Config.stockBajo && _maximo! > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                  _maximo == 1 ? '¡Queda 1 sola!' : '¡Quedan solo $_maximo!',
+                  style: const TextStyle(color: Marca.champagne, fontSize: 13)),
+            ),
           const SizedBox(height: 28),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _agregar,
-              icon: const Icon(Icons.shopping_bag_outlined, size: 18),
-              label: const Text('AGREGAR AL PEDIDO'),
+          if (p.agotada) ...[
+            const SizedBox(
+              width: double.infinity,
+              child: FilledButton(onPressed: null, child: Text('AGOTADO')),
             ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _reservar,
-              icon: const Icon(Icons.event_available_outlined, size: 18),
-              label: const Text('RESERVAR POR WHATSAPP'),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _consultarReposicion,
+                icon: const Icon(Icons.chat_outlined, size: 18),
+                label: const Text('AVISAME CUANDO VUELVA'),
+              ),
             ),
-          ),
+          ] else ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _agregar,
+                icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                label: const Text('AGREGAR AL PEDIDO'),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _reservar,
+                icon: const Icon(Icons.event_available_outlined, size: 18),
+                label: const Text('RESERVAR POR WHATSAPP'),
+              ),
+            ),
+          ],
           if (p.descripcion.isNotEmpty) ...[
             const SizedBox(height: 28),
             Text('DESCRIPCIÓN', style: Marca.etiqueta()),
@@ -191,15 +275,20 @@ class _PaginaPrendaState extends State<PaginaPrenda> {
 }
 
 class _BotonTalle extends StatelessWidget {
-  const _BotonTalle(
-      {required this.texto, required this.seleccionado, required this.onTap});
+  const _BotonTalle({
+    required this.texto,
+    required this.seleccionado,
+    required this.onTap,
+    this.sinStock = false,
+  });
   final String texto;
   final bool seleccionado;
   final VoidCallback onTap;
+  final bool sinStock;
 
   @override
   Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
+        onTap: sinStock ? null : onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           constraints: const BoxConstraints(minWidth: 48),
@@ -214,7 +303,12 @@ class _BotonTalle extends StatelessWidget {
           child: Text(texto,
               style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: seleccionado ? Marca.negro : Marca.marfil)),
+                  decoration: sinStock ? TextDecoration.lineThrough : null,
+                  color: sinStock
+                      ? Marca.gris.withValues(alpha: .5)
+                      : seleccionado
+                          ? Marca.negro
+                          : Marca.marfil)),
         ),
       );
 }
